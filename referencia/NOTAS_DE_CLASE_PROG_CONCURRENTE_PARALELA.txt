@@ -1,0 +1,929 @@
+﻿1. Realizar un programa Java serial y paralelo (usando hilos explícitos creados e instanciados en el programa) para solucionar el problema de la descomposición matricial QR de una matriz cuadrada NxN (). Verificar que los resultados sean equivalentes y comparar los tiempos de ejecución.
+
+
+  
+
+
+
+
+
+CLASE BASE  MATRIZ.JAVA
+
+
+public class Matrix {
+private int ROWS;
+private int COLS;
+private double[][] M;
+//------------------------------------------------------
+//------------------------------------------------------
+public Matrix(double[][] M) {
+    this.M = M;
+    this.ROWS = M.length;
+    this.COLS = M[0].length;
+}
+//------------------------------------------------------
+//------------------------------------------------------
+public double GetCell(int i, int j){
+    return M[i][j];
+}
+//------------------------------------------------------
+//------------------------------------------------------
+public void SetCell(int i, int j, double val){
+    M[i][j] = val;
+}
+//------------------------------------------------------
+//------------------------------------------------------
+public int getRows() {
+    return ROWS;
+}
+//------------------------------------------------------
+//------------------------------------------------------
+public int getCols() {
+    return COLS;
+}
+//------------------------------------------------------
+//------------------------------------------------------
+void imprimir() {
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+        System.out.printf("%12.2f", M[i][j]);
+        }
+        System.out.println();
+    }
+}
+//------------------------------------------------------
+//------------------------------------------------------
+public synchronized void incrementar(int fil, int col, double cant) {
+    M[fil][col] = M[fil][col] + cant;
+}
+//------------------------------------------------------
+//------------------------------------------------------
+public double prodEsc(int col1, int col2, int filIni, int filFin) {
+double resp = 0;
+    for (int k = filIni; k <= filFin; k++) {
+        resp += (M[k][col1] * M[k][col2]);
+    }
+    return resp;
+}
+//------------------------------------------------------
+//------------------------------------------------------
+public double prodEsc(int col1, int col2) {
+double resp = 0;
+    for (int k = 0; k < ROWS; k++) {
+        resp += (M[k][col1] * M[k][col2]);
+    }
+    return resp;
+}
+//------------------------------------------------------
+//------------------------------------------------------
+Matrix prod(Matrix B) {
+int col = B.getCols();
+    Matrix C = new Matrix(new double[ROWS][col]);
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < col; j++) {
+                for (int k = 0; k < COLS; k++) {
+                double x = GetCell(i, k) * B.GetCell(k, j);
+                    C.SetCell(i, j, C.GetCell(i, j) + x);
+                }
+            }
+        }
+        return C;
+    }
+}
+	
+
+
+
+
+
+PROGRAMA QUE GENERA LOS DATOS
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Random;
+import java.util.Scanner;
+
+
+//------------------------------------------------------
+public class DataSet {
+static int filas = 1000;
+static int columnas = 1000;
+static String DATAFILE = "Datos.TXT";
+//------------------------------------------------------
+public static void CreateFile(int M, int N) {
+Random random = new Random();
+PrintWriter pw = null;
+try {
+pw = new PrintWriter(DATAFILE);
+for (int i = 0; i < M; i++) {
+for (int j = 0; j < N; j++) {
+double valor = random.nextDouble() * 100;
+pw.printf("%10.2f", valor);
+}
+pw.println("");
+}
+} catch (FileNotFoundException ex) {
+System.out.println(ex.getMessage());
+} finally {
+pw.close();
+}
+}
+//------------------------------------------------------
+public static double[][] ReadFile(int M, int N) {
+double[][] MTX = new double[M][N];
+Path filePath = Paths.get(DATAFILE);
+Scanner scanner = null;
+        try {
+                scanner = new Scanner(filePath);
+        }
+        catch (IOException ex) {
+                System.out.println(ex.getMessage());
+        }
+        int i = 0, j = 0;
+        while (scanner.hasNext()) {
+                if (scanner.hasNextDouble()) {
+                        MTX[i][j] = scanner.nextDouble();
+                        j++;
+                        if (j == N) {
+                                j = 0;
+                                i++;
+                        }
+                }
+                else {
+                        scanner.next();
+                }
+        }
+        return MTX;
+}
+//------------------------------------------------------
+public static void WriteFile(Matrix M, String archivo){
+int mm = M.getRows();
+int nn = M.getCols();
+        PrintWriter pw = null;
+        try {
+                pw = new PrintWriter(archivo);
+                for (int i = 0; i < mm; i++) {
+                        for (int j = 0; j < nn; j++) {
+                                double valor = M.GetCell(i, j);
+                                pw.printf("%10.2f", valor);
+                        }
+                        pw.println("");
+                }
+        }
+        catch (FileNotFoundException ex) {
+                System.out.println(ex.getMessage());
+        }
+        finally {
+                pw.close();
+        }
+}
+//------------------------------------------------------
+public static void main(String[] args) {
+Scanner scanner = new Scanner(System.in);
+CreateFile(filas, columnas);
+}
+}
+	
+
+  
+
+
+
+PROCESAMIENTO SERIAL
+public class QR_Serial {
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+public static void Process_Serial() {
+long Time1,Time2;
+double x;
+double[][] A1;
+        A1 = DataSet.ReadFile(DataSet.filas, DataSet.columnas);
+        Time1 = System.currentTimeMillis();
+        Matrix A = new Matrix(A1);
+        int filas = A.getRows();
+        int columnas = A.getCols();
+        Matrix R = new Matrix(new double[columnas][columnas]);
+        for (int i = 0; i < columnas; i++) {
+                for (int j = i; j < columnas; j++) {
+                        x = A.prodEsc(i, j) / Math.sqrt(A.prodEsc(i, i));
+                        R.SetCell(i, j, x);
+                }
+                for (int k = 0; k < filas; k++) {
+                        x = A.GetCell(k, i) / R.GetCell(i, i);
+                        A.SetCell(k, i, x);
+                }
+                for (int j = i + 1; j < columnas; j++) {
+                        for (int k = 0; k < filas; k++) {
+                                x = A.GetCell(k, j) - R.GetCell(i, j) * A.GetCell(k, i);
+                                A.SetCell(k, j, x);
+                        }
+                }
+        }
+        DataSet.WriteFile(A, "Matriz Q - Serial");
+        DataSet.WriteFile(R, "Matriz R - Serial");
+        Time2 = System.currentTimeMillis();
+        System.out.printf("Tiempo de Procesamiento Serial: %d%n", (Time2-Time1));
+}
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+public static void main(String[] args) {
+        Process_Serial();
+}
+//--------------------------------------------------------------
+//--------------------------------------------------------------
+}//CLASS
+
+
+	
+
+  
+
+
+
+PROCESAMIENTO PARALELO
+public class QR_Paralelo {
+public static final int HILOS = 2;
+//--------------------------------------------------------------
+public static void main(String[] args) {
+long Time1,Time2;        
+double[][] A1 = DataSet.ReadFile(DataSet.filas, DataSet.columnas);
+Time1 = System.currentTimeMillis();
+Matrix A = new Matrix(A1);
+Matrix R = new Matrix(new double[A.getCols()][A.getCols()]);
+for (int i = 0; i < A.getCols(); i++) {
+Thread[] threads = new Thread[HILOS];
+for (int t = 0; t < HILOS; t++) {
+threads[t] = new Thread(new Oper1(t + 1, A, R, i));
+threads[t].start();
+}
+try {
+for (int t = 0; t < HILOS; t++) {
+threads[t].join();
+}
+} catch (InterruptedException e) {
+System.out.println(e.getMessage());
+}
+double x = Math.sqrt(R.GetCell(i, i));
+for (int j = i; j < A.getCols(); j++) {
+R.SetCell(i, j, R.GetCell(i, j) / x);
+}
+for (int t = 0; t < HILOS; t++) {
+threads[t] = new Thread(new Oper2(t + 1, A, R, i));
+threads[t].start();
+}
+try {
+for (int t = 0; t < HILOS; t++) {
+threads[t].join();
+}
+} catch (InterruptedException e) {
+System.out.println(e.getMessage());
+}
+for (int t = 0; t < HILOS; t++) {
+threads[t] = new Thread(new Oper3(t + 1, A, R, i));
+threads[t].start();
+}
+try {
+for (int t = 0; t < HILOS; t++) {
+threads[t].join();
+}
+} catch (InterruptedException e) {
+
+
+System.out.println(e.getMessage());
+}
+}
+DataSet.WriteFile(A, "Matriz Q - Paralelo");
+DataSet.WriteFile(R, "Matriz R - Paralelo");
+Time2 = System.currentTimeMillis();
+System.out.printf("Tiempo de Procesamiento Paralelo: %d%n", (Time2-Time1));
+}
+}
+class Oper1 implements Runnable {
+private Matrix A;
+private Matrix R;
+private int filIni;
+private int filFin;
+private int i;
+public Oper1(int nroHilo, Matrix A, Matrix R, int i) {
+this.A = A;
+this.R = R;
+filIni = (nroHilo - 1) * A.getRows() / QR_Paralelo.HILOS;
+filFin = nroHilo * A.getRows() / QR_Paralelo.HILOS - 1;
+this.i = i;
+}
+@Override
+public void run() {
+for (int j = i; j < A.getCols(); j++) {
+R.incrementar(i, j, A.prodEsc(i, j, filIni, filFin));
+}
+}
+}
+class Oper2 implements Runnable {
+private Matrix A;
+private Matrix R;
+private int filIni;
+private int filFin;
+private int i;
+public Oper2(int nroHilo, Matrix A, Matrix R, int i) {
+this.A = A;
+this.R = R;
+filIni = (nroHilo - 1) * A.getRows() / QR_Paralelo.HILOS;
+filFin = nroHilo * A.getRows() / QR_Paralelo.HILOS - 1;
+this.i = i;
+}
+@Override
+public void run() {
+double x = R.GetCell(i, i);
+for (int k = filIni; k <= filFin; k++) {
+A.SetCell(k, i, A.GetCell(k, i) / x);
+}
+}
+}
+
+
+class Oper3 implements Runnable {
+private Matrix A;
+private Matrix R;
+private int filIni;
+private int filFin;
+private int i;
+public Oper3(int nroHilo, Matrix A, Matrix R, int i) {
+this.A = A;
+this.R = R;
+filIni = (nroHilo - 1) * A.getRows() / QR_Paralelo.HILOS;
+filFin = nroHilo * A.getRows() / QR_Paralelo.HILOS - 1;
+this.i = i;
+}
+@Override
+public void run() {
+for (int j = i + 1; j < A.getCols(); j++) {
+double x = R.GetCell(i, j);
+for (int k = filIni; k <= filFin; k++) {
+A.SetCell(k, j, A.GetCell(k, j) - x * A.GetCell(k, i));
+}
+}
+}
+}
+
+
+	
+
+  
+
+
+
+Al procesar los programas anteriores (Serial y Paralelo)  se crearon los siguientes archivos
+
+
+  
+
+
+
+  
+
+
+
+Comparando los archivos generados en modo serial y paralelo
+
+
+  
+
+
+
+  
+
+Se verifica que son iguales
+
+
+   2. Dados N procesadores (cores) P1, P2, .... PN, los tiempos de ejecución requeridos por cada uno de ellos para realizar el procesamiento serial de una determinada tarea (proceso) son . 
+Por tanto, el tiempo promedio de ejecución serial es
+                
+Luego, la proporción de ejecución serial para cada uno de los N procesadores es
+                
+Sea   el tiempo requerido para la ejecución de la misma tarea en modo paralelo usando los N procesadores.   El Factor de Aceleración (Speedup Factor) de ejecución paralela, respecto a cada procesador está dado por:
+                        
+Efectuar un programa Java que determine estas métricas para el problema de multiplicación de matrices A y B.
+ 
+
+
+
+
+
+
+Se ha considerado n=4 procesadores.
+El proceso a realizar es el producto matricial de 2 matrices cuadradas A y B de orden N=1000
+para tal efecto se han considerado los siguientes programas
+
+
+Process_Task.JAVA
+Librería que contiene métodos genéricos usados en los otros programas de procesamiento serial, paralelo y por hilos.
+import java.io.File;
+import java.io.PrintWriter;
+import java.io.FileNotFoundException;
+import java.util.Scanner;
+import java.util.Random;
+
+
+public class Process_Task {
+private int N;
+private final int HH = 10;  //Block Size
+    //=====================================================
+    public Process_Task() {
+        N = 0;
+    }
+    //=====================================================
+    public Process_Task(int T) {
+        N = T;
+    }
+    //=====================================================
+    public String Replicate(char EE, int T) {
+    String SS;
+       SS = "";
+       for(int i=0;i<=T-1;i++) {
+           SS = SS + EE;
+       }
+       return SS;
+    }
+    //=====================================================
+    public int[] GetDimensionFile(String DATAFILE) {
+    int DIM[] = {0,0};
+    String LINE;
+        try {
+          File FILE = new File(DATAFILE);
+          Scanner SCN = new Scanner(FILE);
+          DIM[0] = 0;
+          while(SCN.hasNextLine()) {
+             LINE = SCN.nextLine();
+             DIM[0]++;
+             DIM[1] = LINE.length()/HH;
+          }
+          SCN.close();
+        }
+        catch (FileNotFoundException e) {
+           System.out.println("An error occurred.");
+           e.printStackTrace();
+        }
+        return DIM;
+    }
+    //=====================================================
+    public int GetDimensionMatrix() {
+        return N;
+    }
+    //=====================================================
+    public void SetDimensionMatrix(int T) {
+        N = T;
+    }
+    //=====================================================
+    public void PrintRandomMatrix(int[][] MTX, String TITLE) {
+        System.out.println("\n" + TITLE);
+        System.out.println(Replicate('-',TITLE.length()));
+        for(int i=0;i<=N-1;i++) {
+            for(int j=0;j<=N-1;j++) {
+                System.out.print(MTX[i][j] + "\t");
+            }
+            System.out.println();
+        }
+    }
+    //=====================================================
+    public int[][] CreateRandomMatrix(int T) {
+    int MTX[][] = new int[N][N];
+    Random RDM = new Random();
+        N = T;
+        for(int i=0;i<=N-1;i++) {
+            for(int j=0;j<=N-1;j++) {
+                MTX[i][j] = 10 + RDM.nextInt(90);
+            }
+        }
+        return MTX;
+    }
+    //=====================================================
+    public void CreateFileMatrix(String DATAFILE, int T) {
+    Random RDM = new Random();  
+    PrintWriter PW = null;
+    long EE;
+    String SS;
+        N = T;
+        try {
+            PW = new PrintWriter(DATAFILE);
+            for(int i=0;i<=N-1;i++) {
+                for(int j=0;j<=N-1;j++) {
+                    EE = 10 + RDM.nextInt(90);
+                    SS = "" + EE + "";
+                    PW.print(Replicate(' ',HH-SS.toString().length()) + SS);
+                }
+                PW.println("");
+            }
+        }
+        catch(FileNotFoundException ex) {
+              System.out.println(ex.getMessage());
+        }
+        finally {
+          PW.close();
+        }
+    }
+    //=====================================================
+    public int[][] ReadFileMatrix(String DATAFILE) {
+    int MTX[][] = new int[N][N];
+    int i,j,LL;
+    String LINE;
+        try {
+          File FILE = new File(DATAFILE);
+          Scanner SCN = new Scanner(FILE);
+          i = 0;
+          while(SCN.hasNextLine()) {
+            LINE = SCN.nextLine();
+            LL = LINE.length();
+            j = 0;
+            while(HH*j<=LL-1) {
+                MTX[i][j] = Integer.parseInt(LINE.substring(HH*j,HH*j+HH).trim());
+                j++;
+            }
+            i++;
+          }
+          SCN.close();
+        }
+        catch (FileNotFoundException e) {
+           System.out.println("An error occurred.");
+           e.printStackTrace();
+        }
+        return MTX;
+    }
+    //=====================================================
+}
+
+
+	
+
+
+
+Process_InputData.java
+Programa que genera datos en un archivo.
+
+
+import java.util.Scanner;
+
+
+public class Process_InputData {
+    private static Process_Task TSK = new Process_Task();
+    //================================================================
+    public static void GenerarData() {
+    int M,N;
+        Scanner SCN = new Scanner(System.in);
+        System.out.println("==============================");
+        System.out.println("Creacion de DataSet en Archivo");
+        System.out.println("==============================");
+        System.out.print  ("Ingrese Numero de Filas/Columnas: ");
+        N = SCN.nextInt();
+        TSK.CreateFileMatrix("A.TXT",N);
+        TSK.CreateFileMatrix("B.TXT",N);
+    }
+    //================================================================
+    public static void main(String[] args) {
+       GenerarData();
+    }
+    //================================================================
+}
+	
+
+
+
+Process_Serial.java
+Procesamiento Serial del Producto Matricial
+
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+
+public class Process_Serial {
+private static Process_Task TSK = new Process_Task();
+private static  int N;
+private static int[][] A;
+private static int[][] B;
+private static long[][] C;
+    //================================================================
+    public static void Calcular_AxB() {
+        for(int i=0;i<=N-1;i++) {
+            for(int j=0;j<=N-1;j++) {
+                C[i][j] = 0;
+                for(int k=0;k<=N-1;k++) {
+                    C[i][j] = C[i][j] + A[i][k]*B[k][j];
+                }
+            }
+        }
+    }
+    //================================================================
+    public static void Imprimir_AxB() {
+        System.out.println("\nMatriz AxB - Proceso Serial");
+        System.out.println("---------------------------");
+        for(int i=0;i<=N-1;i++) {
+            for(int j=0;j<=N-1;j++) {
+                System.out.print(C[i][j] + "\t");
+            }
+            System.out.println();
+        }
+    }
+    //================================================================
+    public static void main(String[] args) {
+    int[] Dim_A = TSK.GetDimensionFile("A.TXT");
+    int[] Dim_B = TSK.GetDimensionFile("B.TXT");
+    long Time1,Time2,TIME_SERIAL;
+        if((Dim_A[0]==Dim_A[1])&&
+           (Dim_B[0]==Dim_B[1])&&
+           (Dim_A[1]==Dim_B[0])) {
+            N = Dim_A[0];
+            TSK.SetDimensionMatrix(N);
+            A = TSK.ReadFileMatrix("A.TXT");
+            B = TSK.ReadFileMatrix("B.TXT");
+            C = new long[N][N];
+            Time1 = System.currentTimeMillis();
+            Calcular_AxB();
+            Time2 = System.currentTimeMillis();
+            TIME_SERIAL = Time2 - Time1;
+            System.out.println("Tiempo de Proceso Serial: " + TIME_SERIAL);
+        }
+        else {
+           System.out.println("Error en Dimension en Archivo de Datos");
+        }
+    }
+    //================================================================
+}
+	
+
+
+
+Process_Parallel.java
+Procesamiento Paralelo del Producto Matricial
+
+
+
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+
+public class Process_Parallel {
+private static Process_Task TSK = new Process_Task();
+private static int N;
+private static int T;
+private static long Time1,Time2,TIME_PARALLEL;
+
+
+private static boolean Sw1 = false;
+private static boolean Sw2 = false;
+private static boolean Sw3 = false;
+private static boolean Sw4 = false;
+
+
+private static int[][] A;
+private static int[][] B;
+private static long[][] C;
+    //================================================================
+    public static void Salida_Hilos() {
+       if((Sw1&&Sw2&&Sw3&&Sw4)==true) {
+           Time2 = System.currentTimeMillis();
+           TIME_PARALLEL = Time2 - Time1;
+           System.out.println("Tiempo de Proceso Paralelo: " + TIME_PARALLEL);
+       }
+    }
+    //================================================================
+    public static void SubProceso_Hilo1() {
+        new Thread(new Runnable() {
+            public void run() {
+               Calcular_AxB(0,T,0,T);
+               Sw1 = true;
+               Salida_Hilos();
+            }
+        }).start();
+    }
+    //================================================================
+    public static void SubProceso_Hilo2() {
+        new Thread(new Runnable() {
+            public void run() {
+               Calcular_AxB(0,T,T+1,N-1);
+               Sw2 = true;
+               Salida_Hilos();
+            }
+        }).start();
+    }
+    //================================================================
+    public static void SubProceso_Hilo3() {
+        new Thread(new Runnable() {
+            public void run() {
+               Calcular_AxB(T+1,N-1,0,T);
+               Sw3 = true;
+               Salida_Hilos();
+            }
+        }).start();
+    }
+    //================================================================
+    public static void SubProceso_Hilo4() {
+        new Thread(new Runnable() {
+            public void run() {
+               Calcular_AxB(T+1,N-1,T+1,N-1);
+               Sw4 = true;
+               Salida_Hilos();
+            }
+        }).start();
+    }
+    //================================================================
+    public static void Calcular_AxB(int R1, int R2, int C1, int C2) {
+        for(int i=R1;i<=R2;i++) {
+            for(int j=C1;j<=C2;j++) {
+                C[i][j] = 0;
+                for(int k=0;k<=N-1;k++) {
+                    C[i][j] = C[i][j] + A[i][k]*B[k][j];
+                }
+            }
+        }
+    }
+    //================================================================
+    public static void Imprimir_AxB() {
+        System.out.println("\nMatriz AxB - Proceso Paralelo");
+        System.out.println("---------------------------");
+        for(int i=0;i<=N-1;i++) {
+            for(int j=0;j<=N-1;j++) {
+                System.out.print(C[i][j] + "\t");
+            }
+            System.out.println();
+        }
+    }
+    //================================================================
+    public static void main(String[] args) throws InterruptedException {
+    int[] Dim_A = TSK.GetDimensionFile("A.TXT");
+    int[] Dim_B = TSK.GetDimensionFile("B.TXT");
+        if((Dim_A[0]==Dim_A[1])&&
+           (Dim_B[0]==Dim_B[1])&&
+           (Dim_A[1]==Dim_B[0])) {
+            N = Dim_A[0];
+            TSK.SetDimensionMatrix(N);
+            T = (int)(N/2)-1;
+            A = TSK.ReadFileMatrix("A.TXT");
+            B = TSK.ReadFileMatrix("B.TXT");
+            C = new long[N][N];
+            Time1 = System.currentTimeMillis();
+            SubProceso_Hilo1();
+            SubProceso_Hilo2();
+            SubProceso_Hilo3();
+            SubProceso_Hilo4();
+        }
+        else {
+           System.out.println("Error en Dimension en Archivo de Datos");
+        }
+    }
+    //================================================================
+}
+	
+
+
+
+Process_Threads.java
+Procesamiento en cada hilo (Thread) del Producto Matricial.
+Se han considerado n=4 hilos
+
+
+
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+
+public class Process_Threads {
+private static Process_Task TSK = new Process_Task();
+private static  int N;
+private static long Time11 = 0;
+private static long Time12 = 0;
+private static long Time21 = 0;
+private static long Time22 = 0;
+private static long Time31 = 0;
+private static long Time32 = 0;
+private static long Time41 = 0;
+private static long Time42 = 0;
+private static long TIME_THREAD1=0;
+private static long TIME_THREAD2=0;
+private static long TIME_THREAD3=0;
+private static long TIME_THREAD4=0;
+private static int[][] A;
+private static int[][] B;
+private static long[][] C1;
+private static long[][] C2;
+private static long[][] C3;
+private static long[][] C4;
+    //================================================================
+    public static void Calcular_AxB(long C[][]) {
+        for(int i=0;i<=N-1;i++) {
+            for(int j=0;j<=N-1;j++) {
+                C[i][j] = 0;
+                for(int k=0;k<=N-1;k++) {
+                    C[i][j] = C[i][j] + A[i][k]*B[k][j];
+                }
+            }
+        }
+    }
+    //================================================================
+    //================================================================
+    public static void SubProceso_Hilo1(long C1[][]) {
+        new Thread(new Runnable() {
+            public void run() {
+               Time11 = System.currentTimeMillis();
+               Calcular_AxB(C1);
+               Time12 = System.currentTimeMillis();
+               TIME_THREAD1 = Time12 - Time11;
+               System.out.println("Tiempo de Proceso Hilo 1: " + TIME_THREAD1);
+            }
+        }).start();
+    }
+    //================================================================
+    public static void SubProceso_Hilo2(long C2[][]) {
+        new Thread(new Runnable() {
+            public void run() {
+               Time21 = System.currentTimeMillis();
+               Calcular_AxB(C2);
+               Time22 = System.currentTimeMillis();
+               TIME_THREAD2 = Time22 - Time21;
+               System.out.println("Tiempo de Proceso Hilo 2: " + TIME_THREAD2);
+            }
+        }).start();
+    }
+    //================================================================
+    public static void SubProceso_Hilo3(long C3[][]) {
+        new Thread(new Runnable() {
+            public void run() {
+               Time31 = System.currentTimeMillis();
+               Calcular_AxB(C3);
+               Time32 = System.currentTimeMillis();
+               TIME_THREAD3 = Time32 - Time31;
+               System.out.println("Tiempo de Proceso Hilo 3: " + TIME_THREAD3);
+            }
+        }).start();
+    }
+    //================================================================
+    public static void SubProceso_Hilo4(long C4[][]) {
+        new Thread(new Runnable() {
+            public void run() {
+               Time41 = System.currentTimeMillis();
+               Calcular_AxB(C4);
+               Time42 = System.currentTimeMillis();
+               TIME_THREAD4 = Time42 - Time41;
+               System.out.println("Tiempo de Proceso Hilo 4: " + TIME_THREAD4);
+            }
+        }).start();
+    }
+    //================================================================
+    public static void main(String[] args) throws InterruptedException {
+    int[] Dim_A = TSK.GetDimensionFile("A.TXT");
+    int[] Dim_B = TSK.GetDimensionFile("B.TXT");
+        if((Dim_A[0]==Dim_A[1])&&
+           (Dim_B[0]==Dim_B[1])&&
+           (Dim_A[1]==Dim_B[0])) {
+            N = Dim_A[0];
+            TSK.SetDimensionMatrix(N);
+            A = TSK.ReadFileMatrix("A.TXT");
+            B = TSK.ReadFileMatrix("B.TXT");
+            C1 = new long[N][N];
+            C2 = new long[N][N];
+            C3 = new long[N][N];
+            C4 = new long[N][N];
+            SubProceso_Hilo1(C1);
+            SubProceso_Hilo2(C2);
+            SubProceso_Hilo3(C3);
+            SubProceso_Hilo4(C4);
+        }
+        else {
+           System.out.println("Error en Dimension en Archivo de Datos");
+        }
+    }
+    //================================================================
+}
+
+
+
+
+	
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+Luego con los valores de los tiempos obtenidos se determina la solución del problema
