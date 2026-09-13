@@ -8,14 +8,14 @@ import java.io.IOException;
  */
 public class VerificarSerial {
     public static void main(String[] args) throws IOException {
-        int N = 100;   // filas
-        int M = 5;     // columnas
+        int N = 100; // filas
+        int M = 5; // columnas
         int W = DatasetGenerator.DEFAULT_W;
         int salto = DatasetGenerator.BYTES_SALTO_LINEA;
         String archivo = "verificar_serial_test.txt";
 
         System.out.println("============================================================");
-        System.out.println("  VERIFICACION DE SerialEngine (Integrante 3 - Gabriel)");
+        System.out.println("  VERIFICACION DE SerialEngine");
         System.out.println("============================================================");
 
         // Genera dataset con correlacion perfecta entre Col0 y Col1
@@ -25,8 +25,7 @@ public class VerificarSerial {
 
         // Ejecutar procesamiento serial
         File f = new File(archivo);
-        SerialEngine.ResultadoAsociacion res =
-                SerialEngine.procesarSerial(f, N, M, W, salto);
+        SerialEngine.ResultadoAsociacion res = SerialEngine.procesarSerial(f, N, M, W, salto);
 
         // Imprimir resultados
         System.out.println("------------------------------------------------------------");
@@ -51,6 +50,7 @@ public class VerificarSerial {
         System.out.println("============================================================");
 
         // Limpieza
-        if (f.exists()) f.delete();
+        if (f.exists())
+            f.delete();
     }
 }
