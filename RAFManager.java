@@ -110,6 +110,16 @@ public final class RAFManager implements AutoCloseable {
         }
     }
 
+    // Devuelve el numero de filas del dataset en disco.
+    public int getFilas() {
+        return filas;
+    }
+
+    // Devuelve el numero de columnas del dataset en disco.
+    public int getColumnas() {
+        return columnas;
+    }
+
     // Libera el descriptor de archivo cuando el hilo termina su trabajo.
     @Override
     public void close() throws IOException {
