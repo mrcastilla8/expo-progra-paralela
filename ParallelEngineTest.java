@@ -1,20 +1,11 @@
 import java.io.File;
 import java.io.IOException;
 
-/**
- * Suite de verificación y benchmarking para ParallelEngine:
- *   1. Valida la consistencia numérica exacta entre SerialEngine y ParallelEngine
- *      con 2, 4 y 8 hilos.
- *   2. Comprueba que el par máximo (Col0, Col1 con Pearson = 1.0) y el par mínimo
- *      sean idénticos en todas las ejecuciones.
- *   3. Mide y reporta los tiempos de ejecución (T_s, T_p) y factores de aceleración
- *      (Speedup S = T_s / T_p y Eficiencia E = S / H).
- */
 public class ParallelEngineTest {
 
     public static void main(String[] args) {
-        int N = 200; // Filas (observaciones)
-        int M = 10;  // Columnas (atributos) -> T = 10*9/2 = 45 pares
+        int N = 200;
+        int M = 10;
         int W = DatasetGenerator.DEFAULT_W;
         int salto = DatasetGenerator.BYTES_SALTO_LINEA;
         String archivo = "parallel_test_dataset.txt";
@@ -33,19 +24,17 @@ public class ParallelEngineTest {
         boolean todoOk = true;
 
         try {
-            // 1. Generar dataset con correlación conocida (Col0 y Col1 con r = 1.0)
+
             System.out.println("[PASO 1] Generando dataset de prueba en disco...");
             DatasetGenerator.generarDatasetCorrelacionado(archivo, N, M, W);
             System.out.println(" -> Dataset generado: " + f.length() + " bytes en disco.");
 
-            // 2. Ejecutar procesamiento Serial (Línea base)
             System.out.println("\n[PASO 2] Ejecutando SerialEngine (linea base)...");
             SerialEngine.ResultadoAsociacion resSerial = SerialEngine.procesarSerial(f, N, M, W, salto);
             System.out.printf(" -> Serial (1 hilo): %d ms | Pares: %d%n", resSerial.tiempoMs, resSerial.totalPares);
             System.out.printf("    MAX: Col(%d, %d) = %.8f%n", resSerial.colMax1, resSerial.colMax2, resSerial.valorMax);
             System.out.printf("    MIN: Col(%d, %d) = %.8f%n", resSerial.colMin1, resSerial.colMin2, resSerial.valorMin);
 
-            // 3. Probar ParallelEngine con diferentes cantidades de hilos
             int[] configuracionesHilos = {2, 4, 8};
             ParallelEngine.ResultadoParalelo[] resultadosParalelos = new ParallelEngine.ResultadoParalelo[configuracionesHilos.length];
 
@@ -57,7 +46,6 @@ public class ParallelEngineTest {
                 System.out.printf(" Completado en %d ms.%n", resultadosParalelos[i].tiempoMs);
             }
 
-            // 4. Verificación matemática de equivalencia (agents.md)
             System.out.println("\n---------------------------------------------------------------");
             System.out.println("              VERIFICACION DE CONSISTENCIA NUMERICA            ");
             System.out.println("---------------------------------------------------------------");
@@ -86,7 +74,6 @@ public class ParallelEngineTest {
                         (minParCorrecto && minValCorrecto ? "OK" : "FALLO"));
             }
 
-            // 5. Tabla comparativa de rendimiento y Speedup
             System.out.println("\n===============================================================");
             System.out.println("         TABLA COMPARATIVA DE RENDIMIENTO Y SPEEDUP            ");
             System.out.println("===============================================================");

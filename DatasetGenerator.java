@@ -9,57 +9,28 @@ import java.util.Scanner;
 
 public class DatasetGenerator {
 
-    // Ancho fijo estándar por celda / columna (en caracteres / bytes)
     public static final int DEFAULT_W = 10;
 
-    // Salto de linea determinista (CRLF = \r\n = 2 bytes)
     public static final String SALTO_LINEA = "\r\n";
-    public static final int BYTES_SALTO_LINEA = SALTO_LINEA.getBytes(StandardCharsets.US_ASCII).length; // 2 bytes
+    public static final int BYTES_SALTO_LINEA = SALTO_LINEA.getBytes(StandardCharsets.US_ASCII).length;
 
-    // FORMULAS MATEMATICAS DE DIMENSIONAMIENTO
-
-    /**
-     * Calcula la cantidad total de bytes que mide una fila completa en disco:
-     * FilaBytes = (M * W) + BytesSaltoDeLinea
-     */
     public static long calcularBytesPorFila(int M, int W) {
         return ((long) M * W) + BYTES_SALTO_LINEA;
     }
 
-    /**
-     * Calcula el tamaño exacto esperado del archivo en disco:
-     * TamanoEsperado = N * FilaBytes
-     */
     public static long calcularTamanoArchivo(int N, int M, int W) {
         return (long) N * calcularBytesPorFila(M, W);
     }
 
-    // =========================================================================
-    // FORMATEO CON PADDING DE ANCHO FIJO
-    // =========================================================================
-
-    /**
-     * Aplica padding con espacios a la izquierda para garantizar que cada número
-     * ocupe exactamente W caracteres (ej. 785 -> "       785").
-     */
     public static String formatearNumero(long numero, int W) {
         return String.format("%" + W + "d", numero);
     }
 
-    // =========================================================================
-    // GENERACIÓN DIRECTA A DISCO (OUT-OF-CORE)
-    // =========================================================================
-
-    /**
-     * Genera un archivo con N filas y M columnas de números enteros aleatorios [minVal, maxVal].
-     * Escribe directamente al flujo de disco sin almacenar ninguna matriz en memoria RAM.
-     */
     public static void generarDatasetAleatorio(String nombreArchivo, int N, int M, int minVal, int maxVal, int W) throws IOException {
         Random random = new Random();
         int rango = maxVal - minVal + 1;
         byte[] bytesSalto = SALTO_LINEA.getBytes(StandardCharsets.US_ASCII);
 
-        // Buffer de escritura directo a disco (sin almacenar el dataset en RAM)
         try (OutputStream os = new BufferedOutputStream(new FileOutputStream(nombreArchivo), 65536)) {
             for (int i = 0; i < N; i++) {
                 for (int j = 0; j < M; j++) {
@@ -73,12 +44,6 @@ public class DatasetGenerator {
         }
     }
 
-    /**
-     * Genera un dataset con columnas correlacionadas para validar analíticamente:
-     * - Columna 0: Valor base X (ej. 100 a 999)
-     * - Columna 1: Y = 10 * X (Correlación Pearson = +1.0 con Col 0, según ejemplo de Pablito)
-     * - Columnas restantes: Valores aleatorios independientes
-     */
     public static void generarDatasetCorrelacionado(String nombreArchivo, int N, int M, int W) throws IOException {
         if (M < 2) {
             throw new IllegalArgumentException("Se requieren al menos 2 columnas para el dataset correlacionado.");
@@ -88,17 +53,15 @@ public class DatasetGenerator {
 
         try (OutputStream os = new BufferedOutputStream(new FileOutputStream(nombreArchivo), 65536)) {
             for (int i = 0; i < N; i++) {
-                // Columna 0: Base X
+
                 int x = 100 + random.nextInt(900);
                 String col0 = formatearNumero(x, W);
                 os.write(col0.getBytes(StandardCharsets.US_ASCII));
 
-                // Columna 1: Y = 10 * X (asociación lineal directa perfecta)
                 long y = (long) x * 10;
                 String col1 = formatearNumero(y, W);
                 os.write(col1.getBytes(StandardCharsets.US_ASCII));
 
-                // Columnas 2 .. M-1: Valores independientes
                 for (int j = 2; j < M; j++) {
                     int r = 50 + random.nextInt(950);
                     String colJ = formatearNumero(r, W);
@@ -110,10 +73,6 @@ public class DatasetGenerator {
             os.flush();
         }
     }
-
-    // =========================================================================
-    // MÉTODO PRINCIPAL (CONSOLA DE GENERACIÓN)
-    // =========================================================================
 
     public static void main(String[] args) {
         System.out.println("===============================================================");

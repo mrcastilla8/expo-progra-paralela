@@ -4,43 +4,23 @@ import java.util.function.LongConsumer;
 
 public final class ParallelEngine {
 
-    // =========================================================================
-    // ESTRUCTURA DE RESULTADOS PARALELOS
-    // =========================================================================
-
-    /**
-     * Estructura plana con tipos primitivos que almacena los resultados
-     * del procesamiento paralelo: extremos globales, tiempo T_p y número de hilos.
-     */
     public static final class ResultadoParalelo {
-        // Par con correlacion MAXIMA
+
         public int colMax1;
         public int colMax2;
         public double valorMax;
 
-        // Par con correlacion MINIMA
         public int colMin1;
         public int colMin2;
         public double valorMin;
 
-        // Total de pares evaluados globalmente
         public long totalPares;
 
-        // Número de hilos utilizados
         public int numHilos;
 
-        // Tiempo de ejecución paralelo en milisegundos (T_p)
         public long tiempoMs;
     }
 
-    // =========================================================================
-    // TRABAJADOR CONCURRENTE (WORKER THREAD)
-    // =========================================================================
-
-    /**
-     * Tarea ejecutable para cada hilo concurrente.
-     * Mantiene total aislamiento de recursos y almacena sus propios extremos locales.
-     */
     private static final class WorkerThread implements Runnable {
         private final int idHilo;
         private final File archivo;
@@ -51,7 +31,6 @@ public final class ParallelEngine {
         private final long ini;
         private final long fin;
 
-        // Extremos locales de este hilo (sin contención con otros hilos)
         int colMax1;
         int colMax2;
         double valorMax;
@@ -74,23 +53,21 @@ public final class ParallelEngine {
             this.ini = ini;
             this.fin = fin;
 
-            // Inicialización de extremos locales
-            this.valorMax = -2.0; // Pearson mínimo posible es -1.0
-            this.valorMin =  2.0; // Pearson máximo posible es +1.0
+            this.valorMax = -2.0;
+            this.valorMin =  2.0;
             this.paresEvaluados = 0;
             this.error = null;
         }
 
         @Override
         public void run() {
-            // Si el hilo no tiene pares asignados (ej. más hilos que tareas), termina de inmediato
+
             if (ini >= fin) {
                 return;
             }
-            
+
             try (RAFManager raf = new RAFManager(archivo, N, M, anchoFijo, bytesSalto)) {
 
-                // 1. Determinar el par inicial (j, k) correspondiente al índice lineal 'ini'
                 int j = 0;
                 long acumulado = 0;
                 while (acumulado + (M - 1 - j) <= ini) {
@@ -99,20 +76,16 @@ public final class ParallelEngine {
                 }
                 int k = (int) (j + 1 + (ini - acumulado));
 
-                // 2. Iterar exactamente sobre los pares asignados [ini, fin)
                 for (long p = ini; p < fin; p++) {
 
-                    // Cálculo de Pearson out-of-core con acumuladores escalares primitivos
                     double r = SerialEngine.pearson(raf, N, j, k);
 
-                    // Actualizar máximo local
                     if (r > valorMax) {
                         valorMax = r;
                         colMax1 = j;
                         colMax2 = k;
                     }
 
-                    // Actualizar mínimo local
                     if (r < valorMin) {
                         valorMin = r;
                         colMin1 = j;
@@ -121,7 +94,6 @@ public final class ParallelEngine {
 
                     paresEvaluados++;
 
-                    // Avanzar al siguiente par combinatorio sin repetición
                     k++;
                     if (k == M) {
                         j++;
@@ -135,46 +107,12 @@ public final class ParallelEngine {
         }
     }
 
-    // =========================================================================
-    // PROCESAMIENTO PARALELO MULTIHILO
-    // =========================================================================
-
-    /**
-     * Ejecuta el procesamiento concurrente de asociaciones particionando los
-     * T = M * (M - 1) / 2 pares entre numHilos hilos de ejecución.
-     *
-     * @param archivo    Archivo físico del dataset en disco.
-     * @param N          Número de filas (observaciones).
-     * @param M          Número de columnas (atributos).
-     * @param anchoFijo  Ancho fijo de cada celda en bytes (W).
-     * @param bytesSalto Bytes del salto de línea (2 para CRLF).
-     * @param numHilos   Cantidad de hilos a desplegar (ej. 2, 4, 8).
-     * @return ResultadoParalelo con extremos globales y tiempo Tp medido.
-     * @throws IOException Si ocurre un error de acceso a disco en algún hilo.
-     * @throws InterruptedException Si la espera de hilos es interrumpida.
-     */
     public static ResultadoParalelo procesarParalelo(File archivo, int N, int M,
                                                      int anchoFijo, int bytesSalto,
                                                      int numHilos) throws IOException, InterruptedException {
         return procesarParalelo(archivo, N, M, anchoFijo, bytesSalto, numHilos, null);
     }
 
-    /**
-     * Ejecuta el procesamiento concurrente de asociaciones particionando los
-     * T = M * (M - 1) / 2 pares entre numHilos hilos de ejecución, reportando
-     * el progreso mediante un callback no-bloqueante.
-     *
-     * @param archivo          Archivo físico del dataset en disco.
-     * @param N                Número de filas (observaciones).
-     * @param M                Número de columnas (atributos).
-     * @param anchoFijo        Ancho fijo de cada celda en bytes (W).
-     * @param bytesSalto       Bytes del salto de línea (2 para CRLF).
-     * @param numHilos         Cantidad de hilos a desplegar (ej. 2, 4, 8).
-     * @param progressCallback Callback para notificar pares evaluados globalmente.
-     * @return ResultadoParalelo con extremos globales y tiempo Tp medido.
-     * @throws IOException Si ocurre un error de acceso a disco en algún hilo.
-     * @throws InterruptedException Si la espera de hilos es interrumpida.
-     */
     public static ResultadoParalelo procesarParalelo(File archivo, int N, int M,
                                                      int anchoFijo, int bytesSalto,
                                                      int numHilos,
@@ -187,23 +125,17 @@ public final class ParallelEngine {
             throw new IllegalArgumentException("Se requieren al menos 2 columnas para calcular asociaciones: " + M);
         }
 
-        // Total de combinaciones sin repetición T = M * (M - 1) / 2
         long T = (long) M * (M - 1) / 2;
 
-        // Limitar número de hilos si T es menor que numHilos
         int hilosEfectivos = (int) Math.min((long) numHilos, T);
 
         WorkerThread[] workers = new WorkerThread[hilosEfectivos];
         Thread[] threads = new Thread[hilosEfectivos];
 
-        // =====================================================================
-        // CRONÓMETRO: INICIO del tiempo paralelo T_p
-        // =====================================================================
         long t1 = System.currentTimeMillis();
 
-        // 1. Partición Equitativa de tareas y lanzamiento de hilos
         for (int t = 0; t < hilosEfectivos; t++) {
-            // Rango determinista de tareas de las notas de clase: [ini, fin)
+
             long ini = (long) t * T / hilosEfectivos;
             long fin = (long) (t + 1) * T / hilosEfectivos;
 
@@ -212,7 +144,6 @@ public final class ParallelEngine {
             threads[t].start();
         }
 
-        // 2. Monitoreo pasivo no-bloqueante del progreso si se solicitó callback
         if (progressCallback != null) {
             long totalEvaluados = 0;
             while (totalEvaluados < T) {
@@ -222,7 +153,6 @@ public final class ParallelEngine {
                 }
                 progressCallback.accept(totalEvaluados);
 
-                // Comprobar si todos los hilos ya terminaron para no esperar innecesariamente
                 boolean vivos = false;
                 for (int t = 0; t < hilosEfectivos; t++) {
                     if (threads[t].isAlive()) {
@@ -235,7 +165,7 @@ public final class ParallelEngine {
                 }
                 Thread.sleep(40);
             }
-            // Notificación final
+
             totalEvaluados = 0;
             for (int t = 0; t < hilosEfectivos; t++) {
                 totalEvaluados += workers[t].paresEvaluados;
@@ -243,17 +173,12 @@ public final class ParallelEngine {
             progressCallback.accept(totalEvaluados);
         }
 
-        // 3. Sincronización explícita: asegurar que todos los hilos concluyan su trabajo
         for (int t = 0; t < hilosEfectivos; t++) {
             threads[t].join();
         }
 
-        // =====================================================================
-        // CRONÓMETRO: FIN del tiempo paralelo T_p
-        // =====================================================================
         long t2 = System.currentTimeMillis();
 
-        // 3. Verificar si algún hilo capturó una excepción
         for (int t = 0; t < hilosEfectivos; t++) {
             if (workers[t].error != null) {
                 if (workers[t].error instanceof IOException) {
@@ -263,7 +188,6 @@ public final class ParallelEngine {
             }
         }
 
-        // 4. Reducción final de extremos locales a extremos globales
         ResultadoParalelo res = new ResultadoParalelo();
         res.numHilos = hilosEfectivos;
         res.tiempoMs = t2 - t1;
