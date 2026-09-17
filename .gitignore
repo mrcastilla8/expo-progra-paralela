@@ -1,2 +1,43 @@
-# Bytecode compilado de Java
+# ==============================================================================
+# .gitignore para Proyecto de Programación Concurrente y Paralela (Java)
+# ==============================================================================
+
+# 1. Bytecode y artefactos de compilación de Java
 *.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+
+# 2. Carpetas de compilación de IDEs y herramientas de construcción
+bin/
+out/
+build/
+target/
+
+# 3. Archivos y carpetas de Entornos de Desarrollo (IDEs)
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# 4. Archivos temporales y datasets autogenerados
+# (Evita subir gigabytes o megabytes de datos de prueba a Git)
+*.tmp
+*.dat
+*.DAT
+dataset*.txt
+*_test*.txt
+custom*.txt
+
+# Excepciones: preservar documentación o notas de clase en texto plano
+!referencia/*.txt
+
+# 5. Archivos del Sistema Operativo
+Thumbs.db
+Desktop.ini
+.DS_Store

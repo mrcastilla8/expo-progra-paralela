@@ -12,11 +12,11 @@ public class DatasetGenerator {
     // Ancho fijo estándar por celda / columna (en caracteres / bytes)
     public static final int DEFAULT_W = 10;
 
-    // Salto de línea determinista (CRLF = \r\n = 2 bytes)
+    // Salto de linea determinista (CRLF = \r\n = 2 bytes)
     public static final String SALTO_LINEA = "\r\n";
     public static final int BYTES_SALTO_LINEA = SALTO_LINEA.getBytes(StandardCharsets.US_ASCII).length; // 2 bytes
 
-    // FÓRMULAS MATEMÁTICAS DE DIMENSIONAMIENTO
+    // FORMULAS MATEMATICAS DE DIMENSIONAMIENTO
 
     /**
      * Calcula la cantidad total de bytes que mide una fila completa en disco:

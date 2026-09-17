@@ -1,5 +1,6 @@
 import java.io.File;
 import java.io.IOException;
+import java.util.function.LongConsumer;
 
 /**
  * SerialEngine — Integrante 3: Gabriel "Ingeniero Serial y Matematico"
@@ -131,6 +132,22 @@ public final class SerialEngine {
      */
     public static ResultadoAsociacion procesarSerial(File archivo, int N,
             int M, int anchoFijo, int bytesSalto) throws IOException {
+        return procesarSerial(archivo, N, M, anchoFijo, bytesSalto, null);
+    }
+
+    /**
+     * Ejecuta el procesamiento serial de asociaciones con reporte de progreso opcional.
+     *
+     * @param archivo          Referencia al archivo del dataset.
+     * @param N                Numero de filas.
+     * @param M                Numero de columnas.
+     * @param anchoFijo        Ancho de cada celda en bytes (W).
+     * @param bytesSalto       Bytes del salto de linea (2 para CRLF).
+     * @param progressCallback Callback que recibe los pares completados (opcional).
+     * @return Resultado con extremos y tiempo serial.
+     */
+    public static ResultadoAsociacion procesarSerial(File archivo, int N,
+            int M, int anchoFijo, int bytesSalto, LongConsumer progressCallback) throws IOException {
 
         ResultadoAsociacion resultado = new ResultadoAsociacion();
 
@@ -149,6 +166,8 @@ public final class SerialEngine {
         // Cada llamada a procesarSerial abre su propio RAFManager
         // (descriptor independiente, aislamiento de puntero de archivo).
         RAFManager raf = new RAFManager(archivo, N, M, anchoFijo, bytesSalto);
+
+        long paresCompletados = 0;
 
         // Doble bucle combinatorio de Pablito: j de 0 a M-1, k de j+1 a M-1
         for (int j = 0; j < M - 1; j++) {
@@ -169,6 +188,11 @@ public final class SerialEngine {
                     resultado.valorMin = r;
                     resultado.colMin1 = j;
                     resultado.colMin2 = k;
+                }
+
+                paresCompletados++;
+                if (progressCallback != null) {
+                    progressCallback.accept(paresCompletados);
                 }
             }
         }

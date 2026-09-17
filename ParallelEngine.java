@@ -1,5 +1,6 @@
 import java.io.File;
 import java.io.IOException;
+import java.util.function.LongConsumer;
 
 public final class ParallelEngine {
 
@@ -12,12 +13,12 @@ public final class ParallelEngine {
      * del procesamiento paralelo: extremos globales, tiempo T_p y número de hilos.
      */
     public static final class ResultadoParalelo {
-        // Par con correlación MÁXIMA
+        // Par con correlacion MAXIMA
         public int colMax1;
         public int colMax2;
         public double valorMax;
 
-        // Par con correlación MÍNIMA
+        // Par con correlacion MINIMA
         public int colMin1;
         public int colMin2;
         public double valorMin;
@@ -59,7 +60,7 @@ public final class ParallelEngine {
         int colMin2;
         double valorMin;
 
-        long paresEvaluados;
+        volatile long paresEvaluados;
         Throwable error;
 
         WorkerThread(int idHilo, File archivo, int N, int M, int anchoFijo,
@@ -155,6 +156,30 @@ public final class ParallelEngine {
     public static ResultadoParalelo procesarParalelo(File archivo, int N, int M,
                                                      int anchoFijo, int bytesSalto,
                                                      int numHilos) throws IOException, InterruptedException {
+        return procesarParalelo(archivo, N, M, anchoFijo, bytesSalto, numHilos, null);
+    }
+
+    /**
+     * Ejecuta el procesamiento concurrente de asociaciones particionando los
+     * T = M * (M - 1) / 2 pares entre numHilos hilos de ejecución, reportando
+     * el progreso mediante un callback no-bloqueante.
+     *
+     * @param archivo          Archivo físico del dataset en disco.
+     * @param N                Número de filas (observaciones).
+     * @param M                Número de columnas (atributos).
+     * @param anchoFijo        Ancho fijo de cada celda en bytes (W).
+     * @param bytesSalto       Bytes del salto de línea (2 para CRLF).
+     * @param numHilos         Cantidad de hilos a desplegar (ej. 2, 4, 8).
+     * @param progressCallback Callback para notificar pares evaluados globalmente.
+     * @return ResultadoParalelo con extremos globales y tiempo Tp medido.
+     * @throws IOException Si ocurre un error de acceso a disco en algún hilo.
+     * @throws InterruptedException Si la espera de hilos es interrumpida.
+     */
+    public static ResultadoParalelo procesarParalelo(File archivo, int N, int M,
+                                                     int anchoFijo, int bytesSalto,
+                                                     int numHilos,
+                                                     LongConsumer progressCallback)
+            throws IOException, InterruptedException {
         if (numHilos <= 0) {
             throw new IllegalArgumentException("El número de hilos debe ser mayor a 0: " + numHilos);
         }
@@ -187,7 +212,38 @@ public final class ParallelEngine {
             threads[t].start();
         }
 
-        // 2. Sincronización explícita: esperar a que todos los hilos concluyan su trabajo
+        // 2. Monitoreo pasivo no-bloqueante del progreso si se solicitó callback
+        if (progressCallback != null) {
+            long totalEvaluados = 0;
+            while (totalEvaluados < T) {
+                totalEvaluados = 0;
+                for (int t = 0; t < hilosEfectivos; t++) {
+                    totalEvaluados += workers[t].paresEvaluados;
+                }
+                progressCallback.accept(totalEvaluados);
+
+                // Comprobar si todos los hilos ya terminaron para no esperar innecesariamente
+                boolean vivos = false;
+                for (int t = 0; t < hilosEfectivos; t++) {
+                    if (threads[t].isAlive()) {
+                        vivos = true;
+                        break;
+                    }
+                }
+                if (!vivos) {
+                    break;
+                }
+                Thread.sleep(40);
+            }
+            // Notificación final
+            totalEvaluados = 0;
+            for (int t = 0; t < hilosEfectivos; t++) {
+                totalEvaluados += workers[t].paresEvaluados;
+            }
+            progressCallback.accept(totalEvaluados);
+        }
+
+        // 3. Sincronización explícita: asegurar que todos los hilos concluyan su trabajo
         for (int t = 0; t < hilosEfectivos; t++) {
             threads[t].join();
         }
