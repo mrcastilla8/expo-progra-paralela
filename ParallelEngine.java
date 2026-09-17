@@ -12,12 +12,12 @@ public final class ParallelEngine {
      * del procesamiento paralelo: extremos globales, tiempo T_p y número de hilos.
      */
     public static final class ResultadoParalelo {
-        // Par con correlación MÁXIMA
+        // Par con correlacion MAXIMA
         public int colMax1;
         public int colMax2;
         public double valorMax;
 
-        // Par con correlación MÍNIMA
+        // Par con correlacion MINIMA
         public int colMin1;
         public int colMin2;
         public double valorMin;
