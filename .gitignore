@@ -41,3 +41,7 @@ custom*.txt
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# 6. Paquetes de entrega y distribucion
+entrega_final/
+*.zip
