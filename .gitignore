@@ -34,9 +34,6 @@ verificar_serial_resultados.bin
 # Benchmark generado localmente
 benchmark_resultados.csv
 
-# Mantener notas de referencia .txt
-!referencia/*.txt
-
 # Sistema operativo
 Thumbs.db
 Desktop.ini
