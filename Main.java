@@ -32,6 +32,7 @@ public final class Main {
         File resultadoParalelo = null;
         File archivoDataset = null;
         boolean datasetTemporal = false;
+        int exitCode = 0;
 
         try {
             // 1. Banner y configuracion inicial
@@ -93,7 +94,6 @@ public final class Main {
 
             // 5. FASE 4: Verificacion exacta de equivalencia bit a bit
             ConsoleUI.iniciarFase(4, 5, "Verificacion serial vs paralelo");
-            ConsoleUI.mostrarInicioEquivalencia(totalPares);
             verificarEquivalenciaExacta(resultadoSerial, resultadoParalelo,
                     totalPares, serialDemo, paraleloDemo);
 
@@ -101,39 +101,73 @@ public final class Main {
             ConsoleUI.iniciarFase(5, 5, "Benchmark de rendimiento");
             BenchmarkResult benchmark = ejecutarBenchmarkRiguroso(archivoDataset, config.N, config.M, W, salto, config.hilos);
 
-            // 7. Resumen Final
+            // 7. Limpieza controlada de archivos temporales
+            LimpiezaResultado limpieza = limpiarTemporales(resultadoSerial, resultadoParalelo, archivoDataset, datasetTemporal);
+
+            // 8. Resumen Final con estado real de limpieza
             ConsoleUI.mostrarResumenFinal(config.N, config.M, totalPares,
                     benchmark.serialMedianaNs,
                     benchmark.hilosEfectivos,
                     benchmark.paralelasMedianaNs,
-                    true);
+                    limpieza.serialBorrado,
+                    limpieza.paraleloBorrado,
+                    limpieza.datasetBorrado,
+                    limpieza.huboDatasetTemporal);
 
         } catch (IllegalArgumentException e) {
             ConsoleUI.mostrarError("Configuracion invalida", e.getMessage(), "Verifique los parametros ingresados.");
             if (ConsoleUI.isVerbose()) {
                 e.printStackTrace();
             }
-            System.exit(1);
+            exitCode = 1;
         } catch (IOException e) {
             ConsoleUI.mostrarError("Error de E/S en Dataset / Archivos", e.getMessage(), "Revise la existencia y permisos del archivo.");
             if (ConsoleUI.isVerbose()) {
                 e.printStackTrace();
             }
-            System.exit(1);
+            exitCode = 1;
         } catch (Exception e) {
             ConsoleUI.mostrarError("Error de ejecucion", e.getMessage(), "Ocurrio un error inesperado durante el procesamiento.");
             if (ConsoleUI.isVerbose()) {
                 e.printStackTrace();
             }
-            System.exit(1);
+            exitCode = 1;
         } finally {
-            boolean borradoSerial = resultadoSerial == null || resultadoSerial.delete();
-            boolean borradoParalelo = resultadoParalelo == null || resultadoParalelo.delete();
-            if (datasetTemporal && archivoDataset != null) {
-                archivoDataset.delete();
-            }
-            ConsoleUI.logVerbose("Limpieza completada (Serial=" + borradoSerial + ", Paralelo=" + borradoParalelo + ")");
+            // Garantizar limpieza de temporales incluso ante excepciones previas
+            limpiarTemporales(resultadoSerial, resultadoParalelo, archivoDataset, datasetTemporal);
         }
+
+        if (exitCode != 0) {
+            System.exit(exitCode);
+        }
+    }
+
+    private static LimpiezaResultado limpiarTemporales(File serial, File paralelo, File dataset, boolean datasetTemporal) {
+        LimpiezaResultado res = new LimpiezaResultado();
+        res.huboDatasetTemporal = datasetTemporal;
+
+        if (serial != null && serial.exists()) {
+            res.serialBorrado = serial.delete();
+            ConsoleUI.logVerbose("Eliminacion de resultado serial temporal: " + (res.serialBorrado ? "OK" : "FALLO"));
+        } else {
+            res.serialBorrado = true;
+        }
+
+        if (paralelo != null && paralelo.exists()) {
+            res.paraleloBorrado = paralelo.delete();
+            ConsoleUI.logVerbose("Eliminacion de resultado paralelo temporal: " + (res.paraleloBorrado ? "OK" : "FALLO"));
+        } else {
+            res.paraleloBorrado = true;
+        }
+
+        if (datasetTemporal && dataset != null && dataset.exists()) {
+            res.datasetBorrado = dataset.delete();
+            ConsoleUI.logVerbose("Eliminacion de dataset temporal: " + (res.datasetBorrado ? "OK" : "FALLO"));
+        } else {
+            res.datasetBorrado = true;
+        }
+
+        return res;
     }
 
     private static Config leerConfiguracion(String[] args) {
@@ -188,6 +222,8 @@ public final class Main {
                                                      long totalPares,
                                                      SerialEngine.ResultadoAsociacion serial,
                                                      ParallelEngine.ResultadoParalelo paralelo) throws IOException {
+        ConsoleUI.mostrarInicioEquivalencia(totalPares);
+
         long diferencia = ResultFileManager.encontrarPrimeraDiferencia(
                 serialFile, paraleloFile, totalPares);
 
@@ -205,17 +241,20 @@ public final class Main {
             ConsoleUI.mostrarEquivalenciaExitosa(totalPares);
         } else {
             if (diferencia >= 0) {
-                double valSerial = 0.0;
-                double valParalelo = 0.0;
+                String serialDetalle = "No disponible";
+                String paraleloDetalle = "No disponible";
                 try (ResultFileManager sf = new ResultFileManager(serialFile, totalPares, false);
                      ResultFileManager pf = new ResultFileManager(paraleloFile, totalPares, false)) {
-                    valSerial = Double.longBitsToDouble(sf.leerBits(diferencia));
-                    valParalelo = Double.longBitsToDouble(pf.leerBits(diferencia));
-                } catch (Exception ignored) {
+                    long bitsS = sf.leerBits(diferencia);
+                    long bitsP = pf.leerBits(diferencia);
+                    double valS = Double.longBitsToDouble(bitsS);
+                    double valP = Double.longBitsToDouble(bitsP);
+                    serialDetalle = String.format(Locale.US, "%.10f (bits: 0x%016X)", valS, bitsS);
+                    paraleloDetalle = String.format(Locale.US, "%.10f (bits: 0x%016X)", valP, bitsP);
+                } catch (Exception e) {
+                    ConsoleUI.logVerbose("No se pudo recuperar el detalle de la diferencia: " + e.getMessage());
                 }
-                ConsoleUI.mostrarEquivalenciaFallida(diferencia,
-                        String.format(Locale.US, "%.10f (bits: 0x%016X)", valSerial, Double.doubleToRawLongBits(valSerial)),
-                        String.format(Locale.US, "%.10f (bits: 0x%016X)", valParalelo, Double.doubleToRawLongBits(valParalelo)));
+                ConsoleUI.mostrarEquivalenciaFallida(diferencia, serialDetalle, paraleloDetalle);
                 throw new IllegalStateException("Primera diferencia numerica en el indice lineal de par " + diferencia);
             }
             ConsoleUI.mostrarEquivalenciaFallida(-1,
@@ -276,10 +315,13 @@ public final class Main {
                     hilosConfig[c], paralelasMediana[c] / 1_000_000.0));
         }
 
-        ConsoleUI.mostrarBenchmarkCompletado();
-        ConsoleUI.mostrarTablaBenchmark(serialMediana, hilosConfig, hilosEfectivos, paralelasMediana);
-
+        // 4. Guardar archivo CSV antes de anunciar exportacion en la interfaz
         guardarBenchmarkCsv(serialMediana, hilosConfig, hilosEfectivos, paralelasMediana);
+
+        // 5. Presentar resultados
+        ConsoleUI.mostrarBenchmarkCompletado(BENCHMARK_REPETICIONES);
+        ConsoleUI.mostrarTablaBenchmark(serialMediana, hilosConfig, hilosEfectivos, paralelasMediana);
+        ConsoleUI.mostrarBenchmarkExportado("benchmark_resultados.csv");
 
         return new BenchmarkResult(serialMediana, hilosConfig, hilosEfectivos, paralelasMediana);
     }
@@ -348,5 +390,12 @@ public final class Main {
             this.hilosEfectivos = hilosEfectivos;
             this.paralelasMedianaNs = paralelasMedianaNs;
         }
+    }
+
+    private static final class LimpiezaResultado {
+        boolean serialBorrado;
+        boolean paraleloBorrado;
+        boolean datasetBorrado;
+        boolean huboDatasetTemporal;
     }
 }

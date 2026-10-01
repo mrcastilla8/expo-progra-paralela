@@ -268,13 +268,15 @@ public final class ConsoleUI {
     // =========================================================================
 
     public static void mostrarInicioEquivalencia(long totalPares) {
-        OUT.println("  Comparando archivos de resultados...");
-        OUT.printf("  %s%d / %d%s coeficientes verificados%n",
-                ANSI_BOLD_YELLOW, totalPares, totalPares, ANSI_RESET);
+        OUT.println("  Comparando archivos de resultados en disco...");
+        OUT.printf("  Coeficientes esperados: %s%d%s%n",
+                ANSI_BOLD_YELLOW, totalPares, ANSI_RESET);
     }
 
     public static void mostrarEquivalenciaExitosa(long totalPares) {
         OUT.println();
+        OUT.printf("  %s%d / %d coeficientes verificados%s%n",
+                ANSI_BOLD_YELLOW, totalPares, totalPares, ANSI_RESET);
         OUT.println(ANSI_BOLD_GREEN + "  " + OK_TAG + " EQUIVALENCIA EXACTA CONFIRMADA" + ANSI_RESET);
         OUT.println();
         OUT.printf("    Resultados seriales  : %s%d%s%n", ANSI_BOLD_WHITE, totalPares, ANSI_RESET);
@@ -306,7 +308,11 @@ public final class ConsoleUI {
     // =========================================================================
 
     public static void mostrarInicioBenchmark(int warmup, int repeticiones) {
-        OUT.printf("  Preparando JVM... (%d ronda de warm-up)%n", warmup);
+        OUT.println("  Configuracion del benchmark:");
+        OUT.printf("    * Warm-up      : %d ronda(s)%n", warmup);
+        OUT.printf("    * Repeticiones : %d por configuracion (se utiliza la mediana)%n", repeticiones);
+        OUT.println();
+        OUT.println("  Preparando JVM...");
     }
 
     public static void mostrarWarmupCompletado() {
@@ -315,31 +321,33 @@ public final class ConsoleUI {
         OUT.println("  Ejecutando mediciones sin salida de consola...");
     }
 
-    public static void mostrarBenchmarkCompletado() {
-        OUT.println(ANSI_BOLD_GREEN + "  " + OK_TAG + " Benchmark completado (mediana de 3 repeticiones)" + ANSI_RESET);
+    public static void mostrarBenchmarkCompletado(int repeticiones) {
+        OUT.println(ANSI_BOLD_GREEN + "  " + OK_TAG + " Benchmark completado (mediana de " + repeticiones + " repeticiones)" + ANSI_RESET);
         OUT.println();
     }
 
     public static void mostrarTablaBenchmark(long serialMedianaNs, int[] solicitados,
                                              int[] efectivos, long[] paralelosMedianaNs) {
-        String bordeSep = "+------------+-------+----------------+-----------+------------+";
+        String bordeSep = "+------------+-------------+-----------+----------------+-----------+------------+";
 
         OUT.println(ANSI_CYAN + bordeSep + ANSI_RESET);
         OUT.printf(ANSI_CYAN + "| " + ANSI_BOLD_WHITE + "%-10s" + ANSI_CYAN + " | "
-                + ANSI_BOLD_WHITE + "%-5s" + ANSI_CYAN + " | "
+                + ANSI_BOLD_WHITE + "%-11s" + ANSI_CYAN + " | "
+                + ANSI_BOLD_WHITE + "%-9s" + ANSI_CYAN + " | "
                 + ANSI_BOLD_WHITE + "%-14s" + ANSI_CYAN + " | "
                 + ANSI_BOLD_WHITE + "%-9s" + ANSI_CYAN + " | "
                 + ANSI_BOLD_WHITE + "%-10s" + ANSI_CYAN + " |%n" + ANSI_RESET,
-                "Modalidad", "Hilos", "Mediana", "Speedup", "Eficiencia");
+                "Modalidad", "Solicitados", "Efectivos", "Mediana", "Speedup", "Eficiencia");
         OUT.println(ANSI_CYAN + bordeSep + ANSI_RESET);
 
         // Fila Serial
         OUT.printf(ANSI_CYAN + "| " + ANSI_RESET + "%-10s" + ANSI_CYAN + " | "
-                + ANSI_RESET + "%5d" + ANSI_CYAN + " | "
+                + ANSI_RESET + "%11d" + ANSI_CYAN + " | "
+                + ANSI_RESET + "%9d" + ANSI_CYAN + " | "
                 + ANSI_YELLOW + "%-14s" + ANSI_CYAN + " | "
                 + ANSI_RESET + "%-9s" + ANSI_CYAN + " | "
                 + ANSI_RESET + "%-10s" + ANSI_CYAN + " |%n" + ANSI_RESET,
-                "Serial", 1,
+                "Serial", 1, 1,
                 formatearTiempo(serialMedianaNs),
                 "1.000x",
                 "100.0%");
@@ -349,11 +357,13 @@ public final class ConsoleUI {
             double speedup = (double) serialMedianaNs / paralelosMedianaNs[i];
             double eficiencia = (speedup / efectivos[i]) * 100.0;
             OUT.printf(ANSI_CYAN + "| " + ANSI_RESET + "%-10s" + ANSI_CYAN + " | "
-                    + ANSI_BOLD_WHITE + "%5d" + ANSI_CYAN + " | "
+                    + ANSI_BOLD_WHITE + "%11d" + ANSI_CYAN + " | "
+                    + ANSI_BOLD_WHITE + "%9d" + ANSI_CYAN + " | "
                     + ANSI_YELLOW + "%-14s" + ANSI_CYAN + " | "
                     + ANSI_BOLD_GREEN + "%-9s" + ANSI_CYAN + " | "
                     + ANSI_CYAN + "%-10s" + ANSI_CYAN + " |%n" + ANSI_RESET,
                     "Paralelo",
+                    solicitados[i],
                     efectivos[i],
                     formatearTiempo(paralelosMedianaNs[i]),
                     String.format(Locale.US, "%.3fx", speedup),
@@ -361,7 +371,10 @@ public final class ConsoleUI {
         }
 
         OUT.println(ANSI_CYAN + bordeSep + ANSI_RESET);
-        OUT.println(ANSI_DIM + "  * Medidas exportadas a: " + ANSI_RESET + "benchmark_resultados.csv");
+    }
+
+    public static void mostrarBenchmarkExportado(String archivoCsv) {
+        OUT.println(ANSI_DIM + "  * Medidas exportadas exitosamente a: " + ANSI_RESET + ANSI_BOLD_WHITE + archivoCsv + ANSI_RESET);
         OUT.println();
     }
 
@@ -371,18 +384,20 @@ public final class ConsoleUI {
 
     public static void mostrarResumenFinal(int N, int M, long totalPares,
                                            long serialMedianaNs, int[] hilosEfectivos,
-                                           long[] paralelosMedianaNs, boolean archivosLimpios) {
+                                           long[] paralelosMedianaNs,
+                                           boolean serialBorrado, boolean paraleloBorrado,
+                                           boolean datasetBorrado, boolean huboDatasetTemporal) {
         String sep = repetir('=', ANCHO_CONSOLA);
         OUT.println(ANSI_CYAN + sep + ANSI_RESET);
         OUT.println(ANSI_BOLD_WHITE + centrar("RESUMEN FINAL", ANCHO_CONSOLA) + ANSI_RESET);
         OUT.println(ANSI_CYAN + sep + ANSI_RESET);
         OUT.println();
-        OUT.println(ANSI_GREEN + "  " + OK_TAG + " Dataset procesado mediante acceso aleatorio" + ANSI_RESET);
-        OUT.println(ANSI_GREEN + "  " + OK_TAG + " Dataset completo nunca cargado en memoria" + ANSI_RESET);
+        OUT.println(ANSI_GREEN + "  " + OK_TAG + " Dataset procesado mediante acceso aleatorio (RAF)" + ANSI_RESET);
+        OUT.println(ANSI_GREEN + "  " + OK_TAG + " Dataset completo nunca cargado en memoria RAM" + ANSI_RESET);
         OUT.println(ANSI_GREEN + "  " + OK_TAG + " Procesamiento serial completado" + ANSI_RESET);
         OUT.println(ANSI_GREEN + "  " + OK_TAG + " Procesamiento paralelo completado" + ANSI_RESET);
         OUT.println(ANSI_GREEN + "  " + OK_TAG + " Equivalencia bit a bit confirmada" + ANSI_RESET);
-        OUT.println(ANSI_GREEN + "  " + OK_TAG + " Benchmark 1 / 2 / 4 / 8 hilos completado" + ANSI_RESET);
+        OUT.println(ANSI_GREEN + "  " + OK_TAG + " Benchmark multihilo completado" + ANSI_RESET);
         OUT.println();
 
         OUT.println("  Configuracion:");
@@ -404,7 +419,7 @@ public final class ConsoleUI {
         OUT.println("  Menor mediana observada:");
         if (mejorIndice >= 0) {
             double bestSpeedup = (double) serialMedianaNs / mejorTiempo;
-            OUT.printf("    %s%d hilos%s " + ARROW + " %s%s%s%n",
+            OUT.printf("    %s%d hilos efectivos%s " + ARROW + " %s%s%s%n",
                     ANSI_BOLD_WHITE, hilosEfectivos[mejorIndice], ANSI_RESET,
                     ANSI_BOLD_YELLOW, formatearTiempo(mejorTiempo), ANSI_RESET);
             OUT.println();
@@ -421,10 +436,18 @@ public final class ConsoleUI {
         OUT.println();
 
         OUT.println("  Archivos temporales:");
-        if (archivosLimpios) {
-            OUT.println(ANSI_GREEN + "    " + OK_TAG + " Eliminados correctamente" + ANSI_RESET);
+        if (serialBorrado && paraleloBorrado && (!huboDatasetTemporal || datasetBorrado)) {
+            OUT.println(ANSI_GREEN + "    " + OK_TAG + " Archivos temporales eliminados correctamente" + ANSI_RESET);
         } else {
-            OUT.println("    * Limpieza completada");
+            if (!serialBorrado) {
+                OUT.println(ANSI_BOLD_YELLOW + "    " + WARN_TAG + " No se pudo eliminar resultado serial temporal" + ANSI_RESET);
+            }
+            if (!paraleloBorrado) {
+                OUT.println(ANSI_BOLD_YELLOW + "    " + WARN_TAG + " No se pudo eliminar resultado paralelo temporal" + ANSI_RESET);
+            }
+            if (huboDatasetTemporal && !datasetBorrado) {
+                OUT.println(ANSI_BOLD_YELLOW + "    " + WARN_TAG + " No se pudo eliminar dataset temporal" + ANSI_RESET);
+            }
         }
         OUT.println();
 
