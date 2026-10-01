@@ -1,8 +1,4 @@
-# ==============================================================================
-# .gitignore para Proyecto de Programación Concurrente y Paralela (Java)
-# ==============================================================================
-
-# 1. Bytecode y artefactos de compilación de Java
+# Bytecode y artefactos Java
 *.class
 *.jar
 *.war
@@ -11,13 +7,11 @@
 hs_err_pid*
 replay_pid*
 
-# 2. Carpetas de compilación de IDEs y herramientas de construcción
+# Carpetas de compilacion / IDE
 bin/
 out/
 build/
 target/
-
-# 3. Archivos y carpetas de Entornos de Desarrollo (IDEs)
 .idea/
 *.iml
 .vscode/
@@ -25,23 +19,29 @@ target/
 .classpath
 .project
 
-# 4. Archivos temporales y datasets autogenerados
-# (Evita subir gigabytes o megabytes de datos de prueba a Git)
-*.tmp
-*.dat
-*.DAT
+# Datasets y archivos temporales
 dataset*.txt
 *_test*.txt
 custom*.txt
+*.tmp
+*.dat
+*.DAT
+*_resultados.bin
+*resultados_*.bin
+parallel_test_*.bin
+verificar_serial_resultados.bin
 
-# Excepciones: preservar documentación o notas de clase en texto plano
+# Benchmark generado localmente
+benchmark_resultados.csv
+
+# Mantener notas de referencia .txt
 !referencia/*.txt
 
-# 5. Archivos del Sistema Operativo
+# Sistema operativo
 Thumbs.db
 Desktop.ini
 .DS_Store
 
-# 6. Paquetes de entrega y distribucion
+# Paquetes de distribucion
 entrega_final/
 *.zip
