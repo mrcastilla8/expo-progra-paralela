@@ -1,13 +1,3 @@
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
-import java.util.Scanner;
-
 /**
  * Orquestador principal de la aplicacion de correlacion out-of-core.
  * Coordina las fases de ejecucion, validacion, demostracion y benchmark riguroso,
@@ -26,11 +16,11 @@ public final class Main {
     }
 
     public static void main(String[] args) {
-        Locale.setDefault(Locale.US);
+        java.util.Locale.setDefault(java.util.Locale.US);
 
-        File resultadoSerial = null;
-        File resultadoParalelo = null;
-        File archivoDataset = null;
+        java.io.File resultadoSerial = null;
+        java.io.File resultadoParalelo = null;
+        java.io.File archivoDataset = null;
         boolean datasetTemporal = false;
         int exitCode = 0;
 
@@ -54,7 +44,7 @@ public final class Main {
 
             // 2. FASE 1: Preparacion y validacion del dataset
             ConsoleUI.iniciarFase(1, 5, "Preparacion del dataset");
-            archivoDataset = new File(config.archivo);
+            archivoDataset = new java.io.File(config.archivo);
             if (!archivoDataset.exists()) {
                 ConsoleUI.logVerbose("Dataset no encontrado. Generando dataset correlacionado sintetico...");
                 long inicioGen = System.nanoTime();
@@ -70,8 +60,8 @@ public final class Main {
                 ConsoleUI.mostrarDatasetValidado(config.archivo, config.N, config.M, archivoDataset.length());
             }
 
-            resultadoSerial = File.createTempFile("serial_resultados_", ".bin");
-            resultadoParalelo = File.createTempFile("paralelo_resultados_", ".bin");
+            resultadoSerial = java.io.File.createTempFile("serial_resultados_", ".bin");
+            resultadoParalelo = java.io.File.createTempFile("paralelo_resultados_", ".bin");
             ConsoleUI.logVerbose("Archivos temporales creados: " + resultadoSerial.getName() + ", " + resultadoParalelo.getName());
 
             // 3. FASE 2: Procesamiento Serial Demostrativo
@@ -120,7 +110,7 @@ public final class Main {
                 e.printStackTrace();
             }
             exitCode = 1;
-        } catch (IOException e) {
+        } catch (java.io.IOException e) {
             ConsoleUI.mostrarError("Error de E/S en Dataset / Archivos", e.getMessage(), "Revise la existencia y permisos del archivo.");
             if (ConsoleUI.isVerbose()) {
                 e.printStackTrace();
@@ -142,7 +132,7 @@ public final class Main {
         }
     }
 
-    private static LimpiezaResultado limpiarTemporales(File serial, File paralelo, File dataset, boolean datasetTemporal) {
+    private static LimpiezaResultado limpiarTemporales(java.io.File serial, java.io.File paralelo, java.io.File dataset, boolean datasetTemporal) {
         LimpiezaResultado res = new LimpiezaResultado();
         res.huboDatasetTemporal = datasetTemporal;
 
@@ -171,14 +161,15 @@ public final class Main {
     }
 
     private static Config leerConfiguracion(String[] args) {
-        List<String> positionalArgs = new ArrayList<>();
+        String[] positionalArgs = new String[args.length];
+        int posCount = 0;
         boolean verbose = false;
 
         for (String arg : args) {
             if ("--verbose".equalsIgnoreCase(arg) || "-v".equalsIgnoreCase(arg)) {
                 verbose = true;
             } else {
-                positionalArgs.add(arg);
+                positionalArgs[posCount++] = arg;
             }
         }
 
@@ -187,16 +178,16 @@ public final class Main {
             ConsoleUI.logVerbose("Modo verbose activado.");
         }
 
-        if (!positionalArgs.isEmpty()) {
-            String archivo = positionalArgs.get(0);
-            int N = positionalArgs.size() > 1 ? parsePositivo(positionalArgs.get(1), "Observaciones (N)") : DEFAULT_N;
-            int M = positionalArgs.size() > 2 ? parsePositivo(positionalArgs.get(2), "Variables (M)") : DEFAULT_M;
-            int hilos = positionalArgs.size() > 3 ? parsePositivo(positionalArgs.get(3), "Hilos (H)") : DEFAULT_HILOS;
+        if (posCount > 0) {
+            String archivo = positionalArgs[0];
+            int N = posCount > 1 ? parsePositivo(positionalArgs[1], "Observaciones (N)") : DEFAULT_N;
+            int M = posCount > 2 ? parsePositivo(positionalArgs[2], "Variables (M)") : DEFAULT_M;
+            int hilos = posCount > 3 ? parsePositivo(positionalArgs[3], "Hilos (H)") : DEFAULT_HILOS;
             return new Config(archivo, N, M, hilos);
         }
 
         // Modo interactivo
-        Scanner scanner = new Scanner(System.in);
+        java.util.Scanner scanner = new java.util.Scanner(System.in);
         ConsoleUI.mostrarTituloConfiguracion();
         int N = ConsoleUI.leerEntero(scanner, "Observaciones", DEFAULT_N, "N");
         int M = ConsoleUI.leerEntero(scanner, "Variables", DEFAULT_M, "M");
@@ -218,10 +209,10 @@ public final class Main {
         }
     }
 
-    private static void verificarEquivalenciaExacta(File serialFile, File paraleloFile,
+    private static void verificarEquivalenciaExacta(java.io.File serialFile, java.io.File paraleloFile,
                                                      long totalPares,
                                                      SerialEngine.ResultadoAsociacion serial,
-                                                     ParallelEngine.ResultadoParalelo paralelo) throws IOException {
+                                                     ParallelEngine.ResultadoParalelo paralelo) throws java.io.IOException {
         ConsoleUI.mostrarInicioEquivalencia(totalPares);
 
         long diferencia = ResultFileManager.encontrarPrimeraDiferencia(
@@ -249,8 +240,8 @@ public final class Main {
                     long bitsP = pf.leerBits(diferencia);
                     double valS = Double.longBitsToDouble(bitsS);
                     double valP = Double.longBitsToDouble(bitsP);
-                    serialDetalle = String.format(Locale.US, "%.10f (bits: 0x%016X)", valS, bitsS);
-                    paraleloDetalle = String.format(Locale.US, "%.10f (bits: 0x%016X)", valP, bitsP);
+                    serialDetalle = String.format(java.util.Locale.US, "%.10f (bits: 0x%016X)", valS, bitsS);
+                    paraleloDetalle = String.format(java.util.Locale.US, "%.10f (bits: 0x%016X)", valP, bitsP);
                 } catch (Exception e) {
                     ConsoleUI.logVerbose("No se pudo recuperar el detalle de la diferencia: " + e.getMessage());
                 }
@@ -258,24 +249,19 @@ public final class Main {
                 throw new IllegalStateException("Primera diferencia numerica en el indice lineal de par " + diferencia);
             }
             ConsoleUI.mostrarEquivalenciaFallida(-1,
-                    String.format(Locale.US, "Max=(%d,%d, r=%.6f), Min=(%d,%d, r=%.6f)",
+                    String.format(java.util.Locale.US, "Max=(%d,%d, r=%.6f), Min=(%d,%d, r=%.6f)",
                             serial.colMax1, serial.colMax2, serial.valorMax, serial.colMin1, serial.colMin2, serial.valorMin),
-                    String.format(Locale.US, "Max=(%d,%d, r=%.6f), Min=(%d,%d, r=%.6f)",
+                    String.format(java.util.Locale.US, "Max=(%d,%d, r=%.6f), Min=(%d,%d, r=%.6f)",
                             paralelo.colMax1, paralelo.colMax2, paralelo.valorMax, paralelo.colMin1, paralelo.colMin2, paralelo.valorMin));
             throw new IllegalStateException("Los coeficientes coinciden, pero los metadatos de extremos difieren");
         }
     }
 
-    private static BenchmarkResult ejecutarBenchmarkRiguroso(File archivo, int N, int M,
+    private static BenchmarkResult ejecutarBenchmarkRiguroso(java.io.File archivo, int N, int M,
                                                               int W, int salto, int hilosUsuario)
-            throws IOException, InterruptedException {
+            throws java.io.IOException, InterruptedException {
         // Configuraciones estandar a medir: 2, 4, 8 hilos (incluyendo hilosUsuario si es distinto)
-        List<Integer> listaHilos = new ArrayList<>(Arrays.asList(2, 4, 8));
-        if (hilosUsuario > 0 && !listaHilos.contains(hilosUsuario) && hilosUsuario != 1) {
-            listaHilos.add(hilosUsuario);
-            listaHilos.sort(Integer::compareTo);
-        }
-        int[] hilosConfig = listaHilos.stream().mapToInt(i -> i).toArray();
+        int[] hilosConfig = determinarHilosBenchmark(hilosUsuario);
 
         ConsoleUI.mostrarInicioBenchmark(BENCHMARK_WARMUP, BENCHMARK_REPETICIONES);
 
@@ -327,19 +313,34 @@ public final class Main {
     }
 
     private static void guardarBenchmarkCsv(long serialNs, int[] solicitados,
-                                             int[] efectivos, long[] paralelosNs) throws IOException {
-        try (PrintWriter pw = new PrintWriter(new FileOutputStream("benchmark_resultados.csv"))) {
+                                             int[] efectivos, long[] paralelosNs) throws java.io.IOException {
+        try (java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileOutputStream("benchmark_resultados.csv"))) {
             pw.println("modalidad,hilos_solicitados,hilos_efectivos,mediana_ns,mediana_ms,speedup,eficiencia");
-            pw.printf(Locale.US, "serial,1,1,%d,%.6f,1.000000,1.000000%n",
+            pw.printf(java.util.Locale.US, "serial,1,1,%d,%.6f,1.000000,1.000000%n",
                     serialNs, nsAMs(serialNs));
             for (int i = 0; i < solicitados.length; i++) {
                 double speedup = (double) serialNs / paralelosNs[i];
                 double eficiencia = speedup / efectivos[i];
-                pw.printf(Locale.US, "paralelo,%d,%d,%d,%.6f,%.6f,%.6f%n",
+                pw.printf(java.util.Locale.US, "paralelo,%d,%d,%d,%.6f,%.6f,%.6f%n",
                         solicitados[i], efectivos[i], paralelosNs[i],
                         nsAMs(paralelosNs[i]), speedup, eficiencia);
             }
         }
+    }
+
+    private static int[] determinarHilosBenchmark(int hilosUsuario) {
+        boolean incluirUsuario = hilosUsuario > 1 && hilosUsuario != 2 && hilosUsuario != 4 && hilosUsuario != 8;
+        int[] hilos = incluirUsuario ? new int[]{2, 4, 8, hilosUsuario} : new int[]{2, 4, 8};
+        for (int i = 0; i < hilos.length - 1; i++) {
+            for (int j = i + 1; j < hilos.length; j++) {
+                if (hilos[i] > hilos[j]) {
+                    int tmp = hilos[i];
+                    hilos[i] = hilos[j];
+                    hilos[j] = tmp;
+                }
+            }
+        }
+        return hilos;
     }
 
     private static long mediana(long[] valores) {
