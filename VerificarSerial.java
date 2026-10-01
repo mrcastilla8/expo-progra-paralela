@@ -1,46 +1,53 @@
 import java.io.File;
-import java.io.IOException;
 
-public class VerificarSerial {
-    public static void main(String[] args) throws IOException {
+public final class VerificarSerial {
+
+    private VerificarSerial() {
+    }
+
+    public static void main(String[] args) {
         int N = 100;
         int M = 5;
         int W = DatasetGenerator.DEFAULT_W;
         int salto = DatasetGenerator.BYTES_SALTO_LINEA;
-        String archivo = "verificar_serial_test.txt";
+        File dataset = new File("verificar_serial_test.txt");
+        File resultados = new File("verificar_serial_resultados.bin");
+        boolean ok = true;
 
-        System.out.println("============================================================");
-        System.out.println("  VERIFICACION DE SerialEngine");
-        System.out.println("============================================================");
+        try {
+            DatasetGenerator.generarDatasetCorrelacionado(dataset.getPath(), N, M, W, 2026L);
+            SerialEngine.ResultadoAsociacion res = SerialEngine.procesarSerial(
+                    dataset, N, M, W, salto, null, resultados);
 
-        DatasetGenerator.generarDatasetCorrelacionado(archivo, N, M, W);
-        System.out.println("Dataset generado: N=" + N + ", M=" + M);
-        System.out.println("Total pares esperados: T = " + (M * (M - 1) / 2));
+            long paresEsperados = (long) M * (M - 1) / 2;
+            ok &= verificar(res.totalPares == paresEsperados,
+                    "Se procesan todos los pares unicos");
+            ok &= verificar(res.colMax1 == 0 && res.colMax2 == 1,
+                    "El maximo corresponde a las columnas (0,1)");
+            ok &= verificar(Math.abs(res.valorMax - 1.0) < 1e-12,
+                    "La correlacion conocida es aproximadamente +1");
+            ok &= verificar(resultados.length() == paresEsperados * ResultFileManager.BYTES_POR_RESULTADO,
+                    "Se persiste un resultado fijo de 8 bytes por par");
+            ok &= verificar(res.tiempoNs > 0,
+                    "El tiempo se registra con System.nanoTime");
 
-        File f = new File(archivo);
-        SerialEngine.ResultadoAsociacion res = SerialEngine.procesarSerial(f, N, M, W, salto);
-
-        System.out.println("------------------------------------------------------------");
-        System.out.println("RESULTADOS SERIAL:");
-        System.out.println("  Pares evaluados: " + res.totalPares);
-        System.out.printf("  MAX: Columnas (%d, %d) -> Pearson = %.10f%n",
-                res.colMax1, res.colMax2, res.valorMax);
-        System.out.printf("  MIN: Columnas (%d, %d) -> Pearson = %.10f%n",
-                res.colMin1, res.colMin2, res.valorMin);
-        System.out.println("  Tiempo serial T_s = " + res.tiempoMs + " ms");
-
-        System.out.println("------------------------------------------------------------");
-        boolean okMax = (res.colMax1 == 0 && res.colMax2 == 1);
-        boolean okVal = (Math.abs(res.valorMax - 1.0) < 0.0001);
-
-        if (okMax && okVal) {
-            System.out.println("  >>> CORRELACION MAXIMA CORRECTA: (0,1) = 1.0 [OK] <<<");
-        } else {
-            System.out.println("  >>> ERROR: Se esperaba max en (0,1) con valor 1.0 <<<");
+        } catch (Exception e) {
+            e.printStackTrace();
+            ok = false;
+        } finally {
+            dataset.delete();
+            resultados.delete();
         }
-        System.out.println("============================================================");
 
-        if (f.exists())
-            f.delete();
+        if (!ok) {
+            System.err.println("VerificarSerial: FALLO");
+            System.exit(1);
+        }
+        System.out.println("VerificarSerial: OK");
+    }
+
+    private static boolean verificar(boolean condicion, String mensaje) {
+        System.out.printf("[%s] %s%n", condicion ? "OK" : "ERROR", mensaje);
+        return condicion;
     }
 }
