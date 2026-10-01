@@ -4,88 +4,89 @@ import java.util.function.LongConsumer;
 
 public final class ParallelEngine {
 
-    public static final class ResultadoParalelo {
+    private ParallelEngine() {
+    }
 
+    public static final class ResultadoParalelo {
         public int colMax1;
         public int colMax2;
         public double valorMax;
-
         public int colMin1;
         public int colMin2;
         public double valorMin;
-
         public long totalPares;
-
         public int numHilos;
-
+        public long tiempoNs;
         public long tiempoMs;
     }
 
     private static final class WorkerThread implements Runnable {
         private final int idHilo;
         private final File archivo;
+        private final File archivoResultados;
         private final int N;
         private final int M;
         private final int anchoFijo;
         private final int bytesSalto;
         private final long ini;
         private final long fin;
+        private final long totalPares;
 
         int colMax1;
         int colMax2;
-        double valorMax;
-
+        double valorMax = -Double.MAX_VALUE;
         int colMin1;
         int colMin2;
-        double valorMin;
-
+        double valorMin = Double.MAX_VALUE;
         volatile long paresEvaluados;
         Throwable error;
 
-        WorkerThread(int idHilo, File archivo, int N, int M, int anchoFijo,
-                     int bytesSalto, long ini, long fin) {
+        WorkerThread(int idHilo, File archivo, File archivoResultados,
+                     int N, int M, int anchoFijo, int bytesSalto,
+                     long ini, long fin, long totalPares) {
             this.idHilo = idHilo;
             this.archivo = archivo;
+            this.archivoResultados = archivoResultados;
             this.N = N;
             this.M = M;
             this.anchoFijo = anchoFijo;
             this.bytesSalto = bytesSalto;
             this.ini = ini;
             this.fin = fin;
-
-            this.valorMax = -2.0;
-            this.valorMin =  2.0;
-            this.paresEvaluados = 0;
-            this.error = null;
+            this.totalPares = totalPares;
         }
 
         @Override
         public void run() {
-
             if (ini >= fin) {
                 return;
             }
 
-            try (RAFManager raf = new RAFManager(archivo, N, M, anchoFijo, bytesSalto)) {
+            try (RAFManager raf = new RAFManager(archivo, N, M, anchoFijo, bytesSalto);
+                 ResultFileManager salida = archivoResultados == null
+                         ? null
+                         : new ResultFileManager(archivoResultados, totalPares, false)) {
 
                 int j = 0;
                 long acumulado = 0;
-                while (acumulado + (M - 1 - j) <= ini) {
-                    acumulado += (M - 1 - j);
+                while (acumulado + (M - 1L - j) <= ini) {
+                    acumulado += (M - 1L - j);
                     j++;
                 }
                 int k = (int) (j + 1 + (ini - acumulado));
 
                 for (long p = ini; p < fin; p++) {
-
                     double r = SerialEngine.pearson(raf, N, j, k);
+
+                    if (salida != null) {
+                        salida.escribir(p, r);
+                    }
 
                     if (r > valorMax) {
                         valorMax = r;
                         colMax1 = j;
                         colMax2 = k;
                     }
-
                     if (r < valorMin) {
                         valorMin = r;
                         colMin1 = j;
@@ -93,121 +94,116 @@ public final class ParallelEngine {
                     }
 
                     paresEvaluados++;
-
                     k++;
                     if (k == M) {
                         j++;
                         k = j + 1;
                     }
                 }
-
             } catch (Throwable t) {
-                this.error = t;
+                error = t;
             }
         }
     }
 
     public static ResultadoParalelo procesarParalelo(File archivo, int N, int M,
-                                                     int anchoFijo, int bytesSalto,
-                                                     int numHilos) throws IOException, InterruptedException {
-        return procesarParalelo(archivo, N, M, anchoFijo, bytesSalto, numHilos, null);
+                                                       int anchoFijo, int bytesSalto,
+                                                       int numHilos) throws IOException, InterruptedException {
+        return procesarParalelo(archivo, N, M, anchoFijo, bytesSalto, numHilos, null, null);
     }
 
     public static ResultadoParalelo procesarParalelo(File archivo, int N, int M,
-                                                     int anchoFijo, int bytesSalto,
-                                                     int numHilos,
-                                                     LongConsumer progressCallback)
-            throws IOException, InterruptedException {
+                                                       int anchoFijo, int bytesSalto,
+                                                       int numHilos,
+                                                       LongConsumer progressCallback) throws IOException, InterruptedException {
+        return procesarParalelo(archivo, N, M, anchoFijo, bytesSalto, numHilos,
+                progressCallback, null);
+    }
+
+    public static ResultadoParalelo procesarParalelo(File archivo, int N, int M,
+                                                       int anchoFijo, int bytesSalto,
+                                                       int numHilos,
+                                                       LongConsumer progressCallback,
+                                                       File archivoResultados) throws IOException, InterruptedException {
+        DatasetGenerator.validarDimensiones(N, M, anchoFijo);
+        DatasetGenerator.validarArchivo(archivo, N, M, anchoFijo);
         if (numHilos <= 0) {
-            throw new IllegalArgumentException("El número de hilos debe ser mayor a 0: " + numHilos);
-        }
-        if (M < 2) {
-            throw new IllegalArgumentException("Se requieren al menos 2 columnas para calcular asociaciones: " + M);
+            throw new IllegalArgumentException("El numero de hilos debe ser mayor a cero");
         }
 
         long T = (long) M * (M - 1) / 2;
-
         int hilosEfectivos = (int) Math.min((long) numHilos, T);
+
+        if (archivoResultados != null) {
+            try (ResultFileManager ignored = new ResultFileManager(archivoResultados, T, true)) {
+                // Preasignacion unica antes de iniciar los hilos.
+            }
+        }
 
         WorkerThread[] workers = new WorkerThread[hilosEfectivos];
         Thread[] threads = new Thread[hilosEfectivos];
 
-        long t1 = System.currentTimeMillis();
+        long inicioNs = System.nanoTime();
 
         for (int t = 0; t < hilosEfectivos; t++) {
-
             long ini = (long) t * T / hilosEfectivos;
             long fin = (long) (t + 1) * T / hilosEfectivos;
-
-            workers[t] = new WorkerThread(t, archivo, N, M, anchoFijo, bytesSalto, ini, fin);
+            workers[t] = new WorkerThread(t, archivo, archivoResultados, N, M,
+                    anchoFijo, bytesSalto, ini, fin, T);
             threads[t] = new Thread(workers[t], "ParallelWorker-" + t);
             threads[t].start();
         }
 
         if (progressCallback != null) {
-            long totalEvaluados = 0;
-            while (totalEvaluados < T) {
-                totalEvaluados = 0;
+            boolean activos;
+            do {
+                long totalEvaluados = 0;
+                activos = false;
                 for (int t = 0; t < hilosEfectivos; t++) {
                     totalEvaluados += workers[t].paresEvaluados;
+                    activos |= threads[t].isAlive();
                 }
                 progressCallback.accept(totalEvaluados);
-
-                boolean vivos = false;
-                for (int t = 0; t < hilosEfectivos; t++) {
-                    if (threads[t].isAlive()) {
-                        vivos = true;
-                        break;
-                    }
+                if (activos) {
+                    Thread.sleep(40L);
                 }
-                if (!vivos) {
-                    break;
-                }
-                Thread.sleep(40);
-            }
-
-            totalEvaluados = 0;
-            for (int t = 0; t < hilosEfectivos; t++) {
-                totalEvaluados += workers[t].paresEvaluados;
-            }
-            progressCallback.accept(totalEvaluados);
+            } while (activos);
         }
 
-        for (int t = 0; t < hilosEfectivos; t++) {
-            threads[t].join();
+        for (Thread thread : threads) {
+            thread.join();
         }
 
-        long t2 = System.currentTimeMillis();
+        long tiempoNs = System.nanoTime() - inicioNs;
 
         for (int t = 0; t < hilosEfectivos; t++) {
             if (workers[t].error != null) {
                 if (workers[t].error instanceof IOException) {
                     throw (IOException) workers[t].error;
                 }
-                throw new RuntimeException("Error en hilo " + t + ": " + workers[t].error.getMessage(), workers[t].error);
+                throw new RuntimeException("Error en hilo " + workers[t].idHilo,
+                        workers[t].error);
             }
         }
 
         ResultadoParalelo res = new ResultadoParalelo();
         res.numHilos = hilosEfectivos;
-        res.tiempoMs = t2 - t1;
-        res.totalPares = 0;
-        res.valorMax = -2.0;
-        res.valorMin =  2.0;
+        res.tiempoNs = tiempoNs;
+        res.tiempoMs = tiempoNs / 1_000_000L;
+        res.valorMax = -Double.MAX_VALUE;
+        res.valorMin = Double.MAX_VALUE;
 
-        for (int t = 0; t < hilosEfectivos; t++) {
-            res.totalPares += workers[t].paresEvaluados;
-
-            if (workers[t].valorMax > res.valorMax) {
-                res.valorMax = workers[t].valorMax;
-                res.colMax1 = workers[t].colMax1;
-                res.colMax2 = workers[t].colMax2;
+        for (WorkerThread worker : workers) {
+            res.totalPares += worker.paresEvaluados;
+            if (worker.valorMax > res.valorMax) {
+                res.valorMax = worker.valorMax;
+                res.colMax1 = worker.colMax1;
+                res.colMax2 = worker.colMax2;
             }
-
-            if (workers[t].valorMin < res.valorMin) {
-                res.valorMin = workers[t].valorMin;
-                res.colMin1 = workers[t].colMin1;
-                res.colMin2 = workers[t].colMin2;
+            if (worker.valorMin < res.valorMin) {
+                res.valorMin = worker.valorMin;
+                res.colMin1 = worker.colMin1;
+                res.colMin2 = worker.colMin2;
             }
         }
 
