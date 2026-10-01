@@ -2,17 +2,18 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Scanner;
 
+/**
+ * Orquestador principal de la aplicacion de correlacion out-of-core.
+ * Coordina las fases de ejecucion, validacion, demostracion y benchmark riguroso,
+ * delegando la presentacion a ConsoleUI.
+ */
 public final class Main {
-
-    public static final String ANSI_RESET = "\u001B[0m";
-    public static final String ANSI_BOLD = "\u001B[1m";
-    public static final String ANSI_RED = "\u001B[31m";
-    public static final String ANSI_GREEN = "\u001B[32m";
-    public static final String ANSI_YELLOW = "\u001B[33m";
-    public static final String ANSI_CYAN = "\u001B[36m";
 
     private static final int DEFAULT_N = 500;
     private static final int DEFAULT_M = 10;
@@ -33,108 +34,153 @@ public final class Main {
         boolean datasetTemporal = false;
 
         try {
+            // 1. Banner y configuracion inicial
+            ConsoleUI.imprimirBanner();
             Config config = leerConfiguracion(args);
+
+            // Validaciones iniciales
             DatasetGenerator.validarDimensiones(config.N, config.M, DatasetGenerator.DEFAULT_W);
             if (config.hilos <= 0) {
-                throw new IllegalArgumentException("La cantidad de hilos debe ser mayor a cero");
+                throw new IllegalArgumentException("La cantidad de hilos debe ser mayor a cero. Valor recibido: " + config.hilos);
             }
 
             int W = DatasetGenerator.DEFAULT_W;
             int salto = DatasetGenerator.BYTES_SALTO_LINEA;
             long totalPares = (long) config.M * (config.M - 1) / 2;
-            imprimirEncabezado(config.N, config.M, totalPares, W, salto);
 
+            ConsoleUI.mostrarConfiguracion(config.N, config.M, totalPares, config.hilos,
+                    config.archivo, W, salto);
+
+            // 2. FASE 1: Preparacion y validacion del dataset
+            ConsoleUI.iniciarFase(1, 5, "Preparacion del dataset");
             archivoDataset = new File(config.archivo);
             if (!archivoDataset.exists()) {
-                System.out.println("\n[FASE 1] Generando dataset correlacionado reproducible...");
+                ConsoleUI.logVerbose("Dataset no encontrado. Generando dataset correlacionado sintetico...");
+                long inicioGen = System.nanoTime();
                 DatasetGenerator.generarDatasetCorrelacionado(
                         config.archivo, config.N, config.M, W, DatasetGenerator.DEFAULT_SEED);
+                long tiempoGenNs = System.nanoTime() - inicioGen;
                 datasetTemporal = true;
+                DatasetGenerator.validarArchivo(archivoDataset, config.N, config.M, W);
+                ConsoleUI.mostrarDatasetGenerado(config.archivo, config.N, config.M,
+                        archivoDataset.length(), tiempoGenNs / 1_000_000.0);
+            } else {
+                DatasetGenerator.validarArchivo(archivoDataset, config.N, config.M, W);
+                ConsoleUI.mostrarDatasetValidado(config.archivo, config.N, config.M, archivoDataset.length());
             }
-            DatasetGenerator.validarArchivo(archivoDataset, config.N, config.M, W);
-            System.out.printf("[OK] Dataset validado: %s (%d bytes)%n",
-                    archivoDataset.getPath(), archivoDataset.length());
 
             resultadoSerial = File.createTempFile("serial_resultados_", ".bin");
             resultadoParalelo = File.createTempFile("paralelo_resultados_", ".bin");
+            ConsoleUI.logVerbose("Archivos temporales creados: " + resultadoSerial.getName() + ", " + resultadoParalelo.getName());
 
-            System.out.println("\n[FASE 2] Ejecucion demostrativa SERIAL con persistencia de todos los coeficientes");
+            // 3. FASE 2: Procesamiento Serial Demostrativo
+            ConsoleUI.iniciarFase(2, 5, "Procesamiento serial");
             SerialEngine.ResultadoAsociacion serialDemo = SerialEngine.procesarSerial(
                     archivoDataset, config.N, config.M, W, salto,
-                    pares -> imprimirBarraProgreso(pares, totalPares, "Serial"),
+                    pares -> ConsoleUI.imprimirBarraProgreso(pares, totalPares, "Progreso"),
                     resultadoSerial);
-            System.out.println();
-            imprimirExtremosSerial(serialDemo);
+            ConsoleUI.finalizarBarraProgreso();
+            ConsoleUI.mostrarResultadoSerial(serialDemo);
 
-            System.out.printf("\n[FASE 3] Ejecucion demostrativa PARALELA con %d hilos%n", config.hilos);
+            // 4. FASE 3: Procesamiento Paralelo Demostrativo
+            ConsoleUI.iniciarFase(3, 5, "Procesamiento paralelo - " + config.hilos + " hilos");
             ParallelEngine.ResultadoParalelo paraleloDemo = ParallelEngine.procesarParalelo(
                     archivoDataset, config.N, config.M, W, salto, config.hilos,
-                    pares -> imprimirBarraProgreso(pares, totalPares, "Paralelo"),
+                    pares -> ConsoleUI.imprimirBarraProgreso(pares, totalPares, "Progreso"),
                     resultadoParalelo);
-            System.out.println();
-            imprimirExtremosParalelo(paraleloDemo);
+            ConsoleUI.finalizarBarraProgreso();
+            ConsoleUI.mostrarResultadoParalelo(paraleloDemo);
 
-            System.out.println("\n[FASE 4] Verificacion exacta de equivalencia");
+            // 5. FASE 4: Verificacion exacta de equivalencia bit a bit
+            ConsoleUI.iniciarFase(4, 5, "Verificacion serial vs paralelo");
+            ConsoleUI.mostrarInicioEquivalencia(totalPares);
             verificarEquivalenciaExacta(resultadoSerial, resultadoParalelo,
                     totalPares, serialDemo, paraleloDemo);
 
-            System.out.println("\n[FASE 5] Benchmark limpio (sin UI ni archivos de resultados dentro de la medicion)");
-            ejecutarBenchmarkRiguroso(archivoDataset, config.N, config.M, W, salto);
+            // 6. FASE 5: Benchmark riguroso
+            ConsoleUI.iniciarFase(5, 5, "Benchmark de rendimiento");
+            BenchmarkResult benchmark = ejecutarBenchmarkRiguroso(archivoDataset, config.N, config.M, W, salto, config.hilos);
 
+            // 7. Resumen Final
+            ConsoleUI.mostrarResumenFinal(config.N, config.M, totalPares,
+                    benchmark.serialMedianaNs,
+                    benchmark.hilosEfectivos,
+                    benchmark.paralelasMedianaNs,
+                    true);
+
+        } catch (IllegalArgumentException e) {
+            ConsoleUI.mostrarError("Configuracion invalida", e.getMessage(), "Verifique los parametros ingresados.");
+            if (ConsoleUI.isVerbose()) {
+                e.printStackTrace();
+            }
+            System.exit(1);
+        } catch (IOException e) {
+            ConsoleUI.mostrarError("Error de E/S en Dataset / Archivos", e.getMessage(), "Revise la existencia y permisos del archivo.");
+            if (ConsoleUI.isVerbose()) {
+                e.printStackTrace();
+            }
+            System.exit(1);
         } catch (Exception e) {
-            System.err.println(ANSI_RED + "ERROR: " + e.getMessage() + ANSI_RESET);
-            e.printStackTrace();
+            ConsoleUI.mostrarError("Error de ejecucion", e.getMessage(), "Ocurrio un error inesperado durante el procesamiento.");
+            if (ConsoleUI.isVerbose()) {
+                e.printStackTrace();
+            }
             System.exit(1);
         } finally {
-            if (resultadoSerial != null) {
-                resultadoSerial.delete();
-            }
-            if (resultadoParalelo != null) {
-                resultadoParalelo.delete();
-            }
+            boolean borradoSerial = resultadoSerial == null || resultadoSerial.delete();
+            boolean borradoParalelo = resultadoParalelo == null || resultadoParalelo.delete();
             if (datasetTemporal && archivoDataset != null) {
                 archivoDataset.delete();
             }
+            ConsoleUI.logVerbose("Limpieza completada (Serial=" + borradoSerial + ", Paralelo=" + borradoParalelo + ")");
         }
     }
 
     private static Config leerConfiguracion(String[] args) {
-        if (args.length > 0) {
-            String archivo = args[0];
-            int N = args.length > 1 ? parsePositivo(args[1], "N") : DEFAULT_N;
-            int M = args.length > 2 ? parsePositivo(args[2], "M") : DEFAULT_M;
-            int hilos = args.length > 3 ? parsePositivo(args[3], "hilos") : DEFAULT_HILOS;
+        List<String> positionalArgs = new ArrayList<>();
+        boolean verbose = false;
+
+        for (String arg : args) {
+            if ("--verbose".equalsIgnoreCase(arg) || "-v".equalsIgnoreCase(arg)) {
+                verbose = true;
+            } else {
+                positionalArgs.add(arg);
+            }
+        }
+
+        ConsoleUI.setVerbose(verbose);
+        if (verbose) {
+            ConsoleUI.logVerbose("Modo verbose activado.");
+        }
+
+        if (!positionalArgs.isEmpty()) {
+            String archivo = positionalArgs.get(0);
+            int N = positionalArgs.size() > 1 ? parsePositivo(positionalArgs.get(1), "Observaciones (N)") : DEFAULT_N;
+            int M = positionalArgs.size() > 2 ? parsePositivo(positionalArgs.get(2), "Variables (M)") : DEFAULT_M;
+            int hilos = positionalArgs.size() > 3 ? parsePositivo(positionalArgs.get(3), "Hilos (H)") : DEFAULT_HILOS;
             return new Config(archivo, N, M, hilos);
         }
 
+        // Modo interactivo
         Scanner scanner = new Scanner(System.in);
-        imprimirBannerBienvenida();
-        int N = leerEnteroOpcional(scanner, "Observaciones N", DEFAULT_N);
-        int M = leerEnteroOpcional(scanner, "Variables M", DEFAULT_M);
-        int hilos = leerEnteroOpcional(scanner, "Cantidad de hilos", DEFAULT_HILOS);
-        System.out.printf("Ruta del dataset [%s]: ", DEFAULT_ARCHIVO);
-        String ruta = scanner.nextLine().trim();
-        if (ruta.isEmpty()) {
-            ruta = DEFAULT_ARCHIVO;
-        }
-        return new Config(ruta, N, M, hilos);
-    }
+        ConsoleUI.mostrarTituloConfiguracion();
+        int N = ConsoleUI.leerEntero(scanner, "Observaciones", DEFAULT_N, "N");
+        int M = ConsoleUI.leerEntero(scanner, "Variables", DEFAULT_M, "M");
+        int hilos = ConsoleUI.leerEntero(scanner, "Hilos principales", DEFAULT_HILOS, "H");
+        String ruta = ConsoleUI.leerRuta(scanner, "Dataset", DEFAULT_ARCHIVO);
 
-    private static int leerEnteroOpcional(Scanner scanner, String etiqueta, int valorDefault) {
-        System.out.printf("%s [%d]: ", etiqueta, valorDefault);
-        String texto = scanner.nextLine().trim();
-        return texto.isEmpty() ? valorDefault : parsePositivo(texto, etiqueta);
+        return new Config(ruta, N, M, hilos);
     }
 
     private static int parsePositivo(String texto, String campo) {
         try {
             int valor = Integer.parseInt(texto);
             if (valor <= 0) {
-                throw new IllegalArgumentException(campo + " debe ser mayor a cero");
+                throw new IllegalArgumentException(campo + " debe ser mayor a cero. Valor recibido: " + texto);
             }
             return valor;
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(campo + " debe ser un entero valido");
+            throw new IllegalArgumentException(campo + " debe ser un entero valido. Valor recibido: '" + texto + "'");
         }
     }
 
@@ -156,70 +202,86 @@ public final class Main {
                    == Double.doubleToRawLongBits(paralelo.valorMin);
 
         if (diferencia == -1L && metadata) {
-            System.out.println(ANSI_GREEN + ANSI_BOLD
-                    + "[OK] Los " + totalPares
-                    + " coeficientes seriales y paralelos son identicos bit a bit."
-                    + ANSI_RESET);
+            ConsoleUI.mostrarEquivalenciaExitosa(totalPares);
         } else {
             if (diferencia >= 0) {
+                double valSerial = 0.0;
+                double valParalelo = 0.0;
+                try (ResultFileManager sf = new ResultFileManager(serialFile, totalPares, false);
+                     ResultFileManager pf = new ResultFileManager(paraleloFile, totalPares, false)) {
+                    valSerial = Double.longBitsToDouble(sf.leerBits(diferencia));
+                    valParalelo = Double.longBitsToDouble(pf.leerBits(diferencia));
+                } catch (Exception ignored) {
+                }
+                ConsoleUI.mostrarEquivalenciaFallida(diferencia,
+                        String.format(Locale.US, "%.10f (bits: 0x%016X)", valSerial, Double.doubleToRawLongBits(valSerial)),
+                        String.format(Locale.US, "%.10f (bits: 0x%016X)", valParalelo, Double.doubleToRawLongBits(valParalelo)));
                 throw new IllegalStateException("Primera diferencia numerica en el indice lineal de par " + diferencia);
             }
+            ConsoleUI.mostrarEquivalenciaFallida(-1,
+                    String.format(Locale.US, "Max=(%d,%d, r=%.6f), Min=(%d,%d, r=%.6f)",
+                            serial.colMax1, serial.colMax2, serial.valorMax, serial.colMin1, serial.colMin2, serial.valorMin),
+                    String.format(Locale.US, "Max=(%d,%d, r=%.6f), Min=(%d,%d, r=%.6f)",
+                            paralelo.colMax1, paralelo.colMax2, paralelo.valorMax, paralelo.colMin1, paralelo.colMin2, paralelo.valorMin));
             throw new IllegalStateException("Los coeficientes coinciden, pero los metadatos de extremos difieren");
         }
     }
 
-    private static void ejecutarBenchmarkRiguroso(File archivo, int N, int M,
-                                                   int W, int salto)
+    private static BenchmarkResult ejecutarBenchmarkRiguroso(File archivo, int N, int M,
+                                                              int W, int salto, int hilosUsuario)
             throws IOException, InterruptedException {
-        int[] hilos = {2, 4, 8};
+        // Configuraciones estandar a medir: 2, 4, 8 hilos (incluyendo hilosUsuario si es distinto)
+        List<Integer> listaHilos = new ArrayList<>(Arrays.asList(2, 4, 8));
+        if (hilosUsuario > 0 && !listaHilos.contains(hilosUsuario) && hilosUsuario != 1) {
+            listaHilos.add(hilosUsuario);
+            listaHilos.sort(Integer::compareTo);
+        }
+        int[] hilosConfig = listaHilos.stream().mapToInt(i -> i).toArray();
 
-        System.out.printf("Warm-up: %d ronda(s). Repeticiones medidas: %d.%n",
-                BENCHMARK_WARMUP, BENCHMARK_REPETICIONES);
-        System.out.println("La UI y la persistencia de resultados quedan fuera de estas mediciones.");
+        ConsoleUI.mostrarInicioBenchmark(BENCHMARK_WARMUP, BENCHMARK_REPETICIONES);
 
+        // 1. Calentamiento JVM
         for (int i = 0; i < BENCHMARK_WARMUP; i++) {
             SerialEngine.procesarSerial(archivo, N, M, W, salto);
-            for (int h : hilos) {
+            for (int h : hilosConfig) {
                 ParallelEngine.procesarParalelo(archivo, N, M, W, salto, h);
             }
         }
+        ConsoleUI.mostrarWarmupCompletado();
 
+        // 2. Mediciones Serial
         long[] serialTiempos = new long[BENCHMARK_REPETICIONES];
         for (int i = 0; i < BENCHMARK_REPETICIONES; i++) {
             serialTiempos[i] = SerialEngine.procesarSerial(archivo, N, M, W, salto).tiempoNs;
+            ConsoleUI.logVerbose(String.format("Serial iteracion %d: %.3f ms", i + 1, serialTiempos[i] / 1_000_000.0));
         }
         long serialMediana = mediana(serialTiempos);
+        ConsoleUI.logVerbose(String.format("Serial mediana: %.3f ms", serialMediana / 1_000_000.0));
 
-        long[] paralelasMediana = new long[hilos.length];
-        int[] hilosEfectivos = new int[hilos.length];
-        for (int c = 0; c < hilos.length; c++) {
+        // 3. Mediciones Paralelas
+        long[] paralelasMediana = new long[hilosConfig.length];
+        int[] hilosEfectivos = new int[hilosConfig.length];
+        for (int c = 0; c < hilosConfig.length; c++) {
             long[] mediciones = new long[BENCHMARK_REPETICIONES];
             for (int i = 0; i < BENCHMARK_REPETICIONES; i++) {
                 ParallelEngine.ResultadoParalelo r = ParallelEngine.procesarParalelo(
-                        archivo, N, M, W, salto, hilos[c]);
+                        archivo, N, M, W, salto, hilosConfig[c]);
                 mediciones[i] = r.tiempoNs;
                 hilosEfectivos[c] = r.numHilos;
+                ConsoleUI.logVerbose(String.format("Paralelo (%d hilos) iteracion %d: %.3f ms",
+                        hilosConfig[c], i + 1, r.tiempoNs / 1_000_000.0));
             }
             paralelasMediana[c] = mediana(mediciones);
+            ConsoleUI.logVerbose(String.format("Paralelo (%d hilos) mediana: %.3f ms",
+                    hilosConfig[c], paralelasMediana[c] / 1_000_000.0));
         }
 
-        System.out.println("+------------+-------+--------------+-----------+-------------+");
-        System.out.println("| Modalidad  | Hilos | Mediana (ms) | Speedup   | Eficiencia  |");
-        System.out.println("+------------+-------+--------------+-----------+-------------+");
-        System.out.printf("| %-10s | %5d | %12.3f | %9.4f | %10s |%n",
-                "Serial", 1, nsAMs(serialMediana), 1.0, "100.00%");
+        ConsoleUI.mostrarBenchmarkCompletado();
+        ConsoleUI.mostrarTablaBenchmark(serialMediana, hilosConfig, hilosEfectivos, paralelasMediana);
 
-        for (int i = 0; i < hilos.length; i++) {
-            double speedup = (double) serialMediana / paralelasMediana[i];
-            double eficiencia = speedup / hilosEfectivos[i] * 100.0;
-            System.out.printf("| %-10s | %5d | %12.3f | %9.4f | %9.2f%% |%n",
-                    "Paralelo", hilosEfectivos[i], nsAMs(paralelasMediana[i]),
-                    speedup, eficiencia);
-        }
-        System.out.println("+------------+-------+--------------+-----------+-------------+");
+        guardarBenchmarkCsv(serialMediana, hilosConfig, hilosEfectivos, paralelasMediana);
 
-        guardarBenchmarkCsv(serialMediana, hilos, hilosEfectivos, paralelasMediana);
-        System.out.println("Datos para la curva de Speedup: benchmark_resultados.csv");
+        return new BenchmarkResult(serialMediana, hilosConfig, hilosEfectivos, paralelasMediana);
     }
 
     private static void guardarBenchmarkCsv(long serialNs, int[] solicitados,
@@ -240,9 +302,7 @@ public final class Main {
 
     private static long mediana(long[] valores) {
         long[] copia = new long[valores.length];
-        for (int i = 0; i < valores.length; i++) {
-            copia[i] = valores[i];
-        }
+        System.arraycopy(valores, 0, copia, 0, valores.length);
         for (int i = 0; i < copia.length - 1; i++) {
             int min = i;
             for (int j = i + 1; j < copia.length; j++) {
@@ -261,50 +321,6 @@ public final class Main {
         return ns / 1_000_000.0;
     }
 
-    private static void imprimirExtremosSerial(SerialEngine.ResultadoAsociacion r) {
-        System.out.printf("Pares procesados: %d%n", r.totalPares);
-        System.out.printf("Maximo: (%d,%d) r=%.10f%n", r.colMax1, r.colMax2, r.valorMax);
-        System.out.printf("Minimo: (%d,%d) r=%.10f%n", r.colMin1, r.colMin2, r.valorMin);
-        System.out.println("Nota: el tiempo de esta fase incluye la visualizacion y no se usa para Speedup.");
-    }
-
-    private static void imprimirExtremosParalelo(ParallelEngine.ResultadoParalelo r) {
-        System.out.printf("Hilos efectivos: %d | Pares procesados: %d%n", r.numHilos, r.totalPares);
-        System.out.printf("Maximo: (%d,%d) r=%.10f%n", r.colMax1, r.colMax2, r.valorMax);
-        System.out.printf("Minimo: (%d,%d) r=%.10f%n", r.colMin1, r.colMin2, r.valorMin);
-        System.out.println("Nota: el tiempo de esta fase incluye la visualizacion y no se usa para Speedup.");
-    }
-
-    private static void imprimirBarraProgreso(long actual, long total, String etiqueta) {
-        int ancho = 24;
-        double ratio = total == 0 ? 1.0 : Math.min(1.0, (double) actual / total);
-        int llenos = (int) (ratio * ancho);
-        StringBuilder sb = new StringBuilder("\r");
-        sb.append(etiqueta).append(" [");
-        for (int i = 0; i < ancho; i++) {
-            sb.append(i < llenos ? '=' : ' ');
-        }
-        sb.append(String.format(Locale.US, "] %6.2f%% (%d/%d)", ratio * 100.0, actual, total));
-        System.out.print(sb);
-        System.out.flush();
-    }
-
-    private static void imprimirBannerBienvenida() {
-        System.out.println("===============================================================");
-        System.out.println(" ANALIZADOR DE CORRELACION SERIAL/PARALELO OUT-OF-CORE");
-        System.out.println("===============================================================");
-    }
-
-    private static void imprimirEncabezado(int N, int M, long totalPares, int W, int salto) {
-        System.out.println("===============================================================");
-        System.out.println("UNMSM - PROGRAMACION CONCURRENTE Y PARALELA");
-        System.out.println("TRABAJO DE APLICACION 1");
-        System.out.println("===============================================================");
-        System.out.printf("N=%d | M=%d | T=%d | W=%d | CRLF=%d bytes%n",
-                N, M, totalPares, W, salto);
-        System.out.println("Arquitectura: out-of-core; el dataset completo no se carga en RAM.");
-    }
-
     private static final class Config {
         final String archivo;
         final int N;
@@ -316,6 +332,21 @@ public final class Main {
             this.N = N;
             this.M = M;
             this.hilos = hilos;
+        }
+    }
+
+    private static final class BenchmarkResult {
+        final long serialMedianaNs;
+        final int[] hilosSolicitados;
+        final int[] hilosEfectivos;
+        final long[] paralelasMedianaNs;
+
+        BenchmarkResult(long serialMedianaNs, int[] hilosSolicitados,
+                        int[] hilosEfectivos, long[] paralelasMedianaNs) {
+            this.serialMedianaNs = serialMedianaNs;
+            this.hilosSolicitados = hilosSolicitados;
+            this.hilosEfectivos = hilosEfectivos;
+            this.paralelasMedianaNs = paralelasMedianaNs;
         }
     }
 }
